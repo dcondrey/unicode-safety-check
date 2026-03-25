@@ -1,5 +1,5 @@
 name: 'Unicode Safety Check'
-description: 'Detect adversarial Unicode in PRs: bidi attacks, invisible chars, homoglyphs, confusable collisions, variation selectors, encoding issues. SARIF support.'
+description: 'Detect adversarial Unicode in PRs: bidi attacks, invisible chars, homoglyphs, confusable collisions, and more.'
 author: 'David Condrey'
 
 branding:
