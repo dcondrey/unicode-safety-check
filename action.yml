@@ -1,0 +1,92 @@
+name: 'Unicode Safety Check'
+description: 'Detect adversarial Unicode in PRs: invisible characters, bidi attacks, homoglyphs, PUA, variation selectors, and encoding issues. SARIF support for Code Scanning.'
+author: 'David Condrey'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  scan-mode:
+    description: 'What to scan: "changed" (PR/push diff only) or "all" (entire repo).'
+    required: false
+    default: 'changed'
+  exclude-patterns:
+    description: 'Newline-separated list of regex patterns for paths to exclude.'
+    required: false
+    default: ''
+  allowlist-file:
+    description: 'Path to a file containing Perl-compatible regexes (one per line) for allowed content.'
+    required: false
+    default: ''
+  fail-on-warn:
+    description: 'Treat warnings (e.g. homoglyphs) as errors that fail the check.'
+    required: false
+    default: 'false'
+  disable-homoglyphs:
+    description: 'Skip the homoglyph detection pass entirely.'
+    required: false
+    default: 'false'
+  disable-annotations:
+    description: 'Skip GitHub PR file annotations.'
+    required: false
+    default: 'false'
+  sarif-file:
+    description: 'Path to write SARIF output. Empty string disables SARIF. Use with github/codeql-action/upload-sarif.'
+    required: false
+    default: ''
+
+outputs:
+  findings:
+    description: 'Total number of findings.'
+    value: ${{ steps.scan.outputs.findings }}
+  files-scanned:
+    description: 'Number of files scanned.'
+    value: ${{ steps.scan.outputs.files_scanned }}
+  sarif-file:
+    description: 'Path to the SARIF file (if generated).'
+    value: ${{ steps.scan.outputs.sarif_file }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Determine files to scan
+      id: filelist
+      shell: bash
+      run: |
+        if [ "${{ inputs.scan-mode }}" = "all" ]; then
+          echo "mode=all" >> "$GITHUB_OUTPUT"
+        else
+          # Get changed files for PR or push
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+            if [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+              BASE_SHA="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+            fi
+          fi
+          git diff --name-only --diff-filter=AMR "$BASE_SHA" HEAD > "$RUNNER_TEMP/unicode_check_files.txt" || true
+          echo "mode=filelist" >> "$GITHUB_OUTPUT"
+          echo "filelist=$RUNNER_TEMP/unicode_check_files.txt" >> "$GITHUB_OUTPUT"
+          count=$(wc -l < "$RUNNER_TEMP/unicode_check_files.txt" | tr -d ' ')
+          echo "Found $count changed file(s) to scan."
+        fi
+
+    - name: Run Unicode safety scan
+      id: scan
+      shell: bash
+      env:
+        INPUT_EXCLUDE_PATTERNS: ${{ inputs.exclude-patterns }}
+        INPUT_ALLOWLIST_FILE: ${{ inputs.allowlist-file }}
+        INPUT_FAIL_ON_WARN: ${{ inputs.fail-on-warn }}
+        INPUT_DISABLE_HOMOGLYPHS: ${{ inputs.disable-homoglyphs }}
+        INPUT_DISABLE_ANNOTATIONS: ${{ inputs.disable-annotations }}
+        INPUT_SARIF_FILE: ${{ inputs.sarif-file }}
+      run: |
+        chmod +x "${{ github.action_path }}/entrypoint.sh"
+        if [ "${{ steps.filelist.outputs.mode }}" = "all" ]; then
+          "${{ github.action_path }}/entrypoint.sh" --all
+        else
+          "${{ github.action_path }}/entrypoint.sh" "${{ steps.filelist.outputs.filelist }}"
+        fi

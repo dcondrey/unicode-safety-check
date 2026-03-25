@@ -1,0 +1,162 @@
+name: Test Action
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-clean:
+    name: Clean repo (should pass)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./
+        with:
+          scan-mode: all
+
+  test-detections:
+    name: Verify detections
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create test files with adversarial Unicode
+        run: |
+          mkdir -p test-fixtures
+          # Zero-width space (U+200B)
+          printf 'normal line\nzero\xe2\x80\x8bwidth\n' > test-fixtures/invisible.txt
+          # Bidi override (U+202E)
+          printf 'normal line\nbidi\xe2\x80\xae override\n' > test-fixtures/bidi.txt
+          # Private Use Area (U+E000)
+          printf 'normal line\npua \xee\x80\x80 char\n' > test-fixtures/pua.txt
+          # Mid-file BOM
+          printf 'line one\nline two\xef\xbb\xbf BOM\n' > test-fixtures/bom.txt
+          # Clean file (should not trigger)
+          printf 'This is fine.\nAll ASCII here.\n' > test-fixtures/clean.txt
+
+      - name: Scan test fixtures (expect failures)
+        id: scan
+        uses: ./
+        with:
+          scan-mode: all
+          disable-annotations: 'true'
+        continue-on-error: true
+
+      - name: Verify findings were detected
+        run: |
+          findings="${{ steps.scan.outputs.findings }}"
+          echo "Findings: $findings"
+          if [ "$findings" -lt 4 ]; then
+            echo "Expected at least 4 findings, got $findings"
+            exit 1
+          fi
+          echo "Detection test passed."
+
+  test-sarif:
+    name: SARIF output
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create adversarial file
+        run: printf 'normal\nbidi\xe2\x80\xae attack\n' > bidi-test.txt
+
+      - name: Scan with SARIF
+        id: scan
+        uses: ./
+        with:
+          scan-mode: all
+          sarif-file: results.sarif
+          disable-annotations: 'true'
+        continue-on-error: true
+
+      - name: Validate SARIF structure
+        run: |
+          if [ ! -f results.sarif ]; then
+            echo "SARIF file not generated"
+            exit 1
+          fi
+          # Validate it's valid JSON with expected structure
+          jq -e '.version == "2.1.0"' results.sarif
+          jq -e '.runs[0].tool.driver.name == "unicode-safety-check"' results.sarif
+          jq -e '.runs[0].tool.driver.rules | length == 10' results.sarif
+          jq -e '.runs[0].results | length > 0' results.sarif
+          echo "SARIF validation passed."
+
+  test-exclude:
+    name: Exclusion patterns
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create test file in excluded dir
+        run: |
+          mkdir -p vendor
+          printf 'pua \xee\x80\x80 in vendor\n' > vendor/dep.txt
+
+      - name: Scan with default exclusions (vendor/ excluded)
+        uses: ./
+        with:
+          scan-mode: all
+
+  test-allowlist:
+    name: Allowlist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create adversarial file and allowlist
+        run: |
+          printf 'U+200B is a zero\xe2\x80\x8bwidth space\n' > test-doc.txt
+          printf 'U\\+200B\n' > allowlist.txt
+
+      - name: Scan with allowlist (should pass)
+        uses: ./
+        with:
+          scan-mode: all
+          allowlist-file: allowlist.txt
+
+  test-variation-selectors:
+    name: Variation selector detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create file with chained variation selectors
+        run: |
+          # 5 variation selectors on one line (payload-like)
+          printf 'a\xef\xb8\x80b\xef\xb8\x81c\xef\xb8\x82d\xef\xb8\x83e\xef\xb8\x84\n' > vs-payload.txt
+          # 1 variation selector (legitimate emoji use, should pass)
+          printf 'text\xef\xb8\x8f emoji\n' > vs-legit.txt
+
+      - name: Scan variation selectors (expect failure on payload)
+        id: vs-scan
+        uses: ./
+        with:
+          scan-mode: all
+          disable-annotations: 'true'
+        continue-on-error: true
+
+      - name: Verify variation selector detection
+        run: |
+          findings="${{ steps.vs-scan.outputs.findings }}"
+          echo "Findings: $findings"
+          if [ "$findings" -lt 1 ]; then
+            echo "Expected at least 1 finding for chained variation selectors"
+            exit 1
+          fi
+          echo "Variation selector test passed."
