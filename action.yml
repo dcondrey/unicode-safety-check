@@ -60,18 +60,17 @@ runs:
           echo "scan_mode=all" >> "$GITHUB_OUTPUT"
         else
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "base_sha=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
           else
-            BASE="${{ github.event.before }}"
-            if [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
-              BASE="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+            BASE_SHA="${{ github.event.before }}"
+            if [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+              BASE_SHA="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
             fi
-            echo "base_sha=$BASE" >> "$GITHUB_OUTPUT"
           fi
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
           echo "scan_mode=changed" >> "$GITHUB_OUTPUT"
 
-          # Build file list from diff
-          git diff --name-only --diff-filter=AMR "${{ steps.params.outputs.base_sha || github.event.before }}" HEAD \
+          git diff --name-only --diff-filter=AMR "$BASE_SHA" HEAD \
             > "$RUNNER_TEMP/unicode_check_files.txt" 2>/dev/null || true
           echo "file_list=$RUNNER_TEMP/unicode_check_files.txt" >> "$GITHUB_OUTPUT"
           count=$(wc -l < "$RUNNER_TEMP/unicode_check_files.txt" 2>/dev/null | tr -d ' ')

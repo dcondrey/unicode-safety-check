@@ -170,11 +170,11 @@ def _parse_context_rules(data: Dict) -> Dict[str, Dict[str, str]]:
 
 def load_policy(path: Optional[str] = None) -> Policy:
     """Load policy from a file, or return defaults."""
-    if path is None:
+    if not path:
         return Policy()
 
     p = Path(path)
-    if not p.exists():
+    if not p.exists() or p.is_dir():
         return Policy()
 
     text = p.read_text(encoding="utf-8")

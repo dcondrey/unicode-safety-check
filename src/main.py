@@ -74,7 +74,7 @@ def main():
     args = parser.parse_args()
 
     # Load policy
-    policy_path = args.policy or os.environ.get("INPUT_POLICY_FILE")
+    policy_path = args.policy or os.environ.get("INPUT_POLICY_FILE") or None
     policy = load_policy(policy_path)
 
     # Merge env-based config (from action.yml)
@@ -84,6 +84,7 @@ def main():
         args.no_annotations = True
     sarif_file = args.sarif_file or os.environ.get("INPUT_SARIF_FILE") or None
     base_sha = args.base_sha or os.environ.get("INPUT_BASE_SHA") or None
+    scan_all = args.all or os.environ.get("INPUT_SCAN_MODE") == "all"
 
     # Collect exclude patterns
     extra_excludes = args.exclude[:]
@@ -92,7 +93,7 @@ def main():
         extra_excludes.extend(p.strip() for p in env_excludes.splitlines() if p.strip())
 
     # Determine files to scan
-    if args.all or os.environ.get("INPUT_SCAN_MODE") == "all":
+    if scan_all:
         file_list = collect_files_recursive(".")
     elif args.file_list:
         with open(args.file_list) as f:
