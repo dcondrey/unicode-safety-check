@@ -1,0 +1,90 @@
+# Unicode Safety Check -- Default Policy
+# Copy this to .unicode-safety.yml in your repo and customize.
+#
+# See: https://github.com/dcondrey/unicode-safety-check
+
+version: 1
+
+# Encoding enforcement
+encoding: utf-8-only
+
+# Identifier policy: ascii-only | latin-extended | permitted-scripts
+identifier_policy: ascii-only
+
+# Only used when identifier_policy is "permitted-scripts"
+permitted_scripts: [Latin, Common, Inherited]
+
+# Override severity for specific rules
+# severity:
+#   suspicious-spacing: low
+#   normalization-drift: low
+
+# File risk levels (strict on code, advisory on docs)
+file_policies:
+  high:
+    patterns:
+      - "*.py"
+      - "*.js"
+      - "*.ts"
+      - "*.tsx"
+      - "*.go"
+      - "*.rs"
+      - "*.java"
+      - "*.c"
+      - "*.cpp"
+      - "*.h"
+      - "*.cs"
+      - "*.rb"
+      - "*.php"
+      - "*.sh"
+      - "*.yml"
+      - "*.yaml"
+      - "*.toml"
+      - "Dockerfile"
+      - "*.tf"
+      - "*.sql"
+  medium:
+    patterns:
+      - "*.md"
+      - "*.rst"
+      - "*.txt"
+      - "*.html"
+      - "*.css"
+      - "*.xml"
+  low:
+    patterns:
+      - "*.po"
+      - "*.pot"
+      - "locales/**"
+      - "i18n/**"
+      - "l10n/**"
+
+# Allowlist: permit specific characters in specific paths
+# allow:
+#   - paths: ["locales/ar/**/*.json"]
+#     characters: [ZWJ, ZWNJ]
+#     reason: "Arabic text shaping requires ZWJ/ZWNJ"
+#   - paths: ["docs/**/*.md"]
+#     characters: [NBSP]
+#     reason: "Non-breaking spaces in documentation"
+
+# Per-context rules (identifier, comment, string)
+contexts:
+  identifier:
+    mixed-script: fail
+    confusable-collision: fail
+    invisible-format: fail
+    homoglyph: fail
+    non-ascii-identifier: warn
+  comment:
+    mixed-script: warn
+    confusable-collision: ignore
+    invisible-format: warn
+    homoglyph: ignore
+    non-ascii-identifier: ignore
+  string:
+    mixed-script: ignore
+    confusable-collision: ignore
+    invisible-format: warn
+    homoglyph: ignore
+    non-ascii-identifier: ignore

@@ -1,5 +1,5 @@
 name: 'Unicode Safety Check'
-description: 'Detect adversarial Unicode in PRs: invisible characters, bidi attacks, homoglyphs, PUA, variation selectors, and encoding issues. SARIF support for Code Scanning.'
+description: 'Detect adversarial Unicode in PRs: bidi attacks, invisible chars, homoglyphs, confusable collisions, variation selectors, encoding issues. SARIF support.'
 author: 'David Condrey'
 
 branding:
@@ -8,31 +8,27 @@ branding:
 
 inputs:
   scan-mode:
-    description: 'What to scan: "changed" (PR/push diff only) or "all" (entire repo).'
+    description: '"changed" (PR/push diff only) or "all" (entire repo).'
     required: false
     default: 'changed'
-  exclude-patterns:
-    description: 'Newline-separated list of regex patterns for paths to exclude.'
+  policy-file:
+    description: 'Path to a policy file (.yml, .yaml, .json). Omit for strict defaults.'
     required: false
     default: ''
-  allowlist-file:
-    description: 'Path to a file containing Perl-compatible regexes (one per line) for allowed content.'
+  exclude-patterns:
+    description: 'Newline-separated path patterns to exclude from scanning.'
     required: false
     default: ''
   fail-on-warn:
-    description: 'Treat warnings (e.g. homoglyphs) as errors that fail the check.'
-    required: false
-    default: 'false'
-  disable-homoglyphs:
-    description: 'Skip the homoglyph detection pass entirely.'
+    description: 'Treat medium/low severity findings as errors.'
     required: false
     default: 'false'
   disable-annotations:
-    description: 'Skip GitHub PR file annotations.'
+    description: 'Skip inline PR annotations.'
     required: false
     default: 'false'
   sarif-file:
-    description: 'Path to write SARIF output. Empty string disables SARIF. Use with github/codeql-action/upload-sarif.'
+    description: 'Path to write SARIF output for Code Scanning.'
     required: false
     default: ''
 
@@ -43,50 +39,75 @@ outputs:
   files-scanned:
     description: 'Number of files scanned.'
     value: ${{ steps.scan.outputs.files_scanned }}
+  critical:
+    description: 'Number of critical findings.'
+    value: ${{ steps.scan.outputs.critical }}
+  high:
+    description: 'Number of high findings.'
+    value: ${{ steps.scan.outputs.high }}
   sarif-file:
-    description: 'Path to the SARIF file (if generated).'
+    description: 'Path to SARIF file (if generated).'
     value: ${{ steps.scan.outputs.sarif_file }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Determine files to scan
-      id: filelist
+    - name: Determine scan parameters
+      id: params
       shell: bash
       run: |
         if [ "${{ inputs.scan-mode }}" = "all" ]; then
-          echo "mode=all" >> "$GITHUB_OUTPUT"
+          echo "scan_mode=all" >> "$GITHUB_OUTPUT"
         else
-          # Get changed files for PR or push
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            echo "base_sha=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
           else
-            BASE_SHA="${{ github.event.before }}"
-            if [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
-              BASE_SHA="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+            BASE="${{ github.event.before }}"
+            if [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+              BASE="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
             fi
+            echo "base_sha=$BASE" >> "$GITHUB_OUTPUT"
           fi
-          git diff --name-only --diff-filter=AMR "$BASE_SHA" HEAD > "$RUNNER_TEMP/unicode_check_files.txt" || true
-          echo "mode=filelist" >> "$GITHUB_OUTPUT"
-          echo "filelist=$RUNNER_TEMP/unicode_check_files.txt" >> "$GITHUB_OUTPUT"
-          count=$(wc -l < "$RUNNER_TEMP/unicode_check_files.txt" | tr -d ' ')
+          echo "scan_mode=changed" >> "$GITHUB_OUTPUT"
+
+          # Build file list from diff
+          git diff --name-only --diff-filter=AMR "${{ steps.params.outputs.base_sha || github.event.before }}" HEAD \
+            > "$RUNNER_TEMP/unicode_check_files.txt" 2>/dev/null || true
+          echo "file_list=$RUNNER_TEMP/unicode_check_files.txt" >> "$GITHUB_OUTPUT"
+          count=$(wc -l < "$RUNNER_TEMP/unicode_check_files.txt" 2>/dev/null | tr -d ' ')
           echo "Found $count changed file(s) to scan."
+        fi
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        # Only install pyyaml if a policy file is provided and is YAML
+        POLICY="${{ inputs.policy-file }}"
+        if [ -n "$POLICY" ] && [[ "$POLICY" =~ \.(yml|yaml)$ ]]; then
+          pip install --quiet pyyaml 2>/dev/null || pip3 install --quiet pyyaml 2>/dev/null || true
         fi
 
     - name: Run Unicode safety scan
       id: scan
       shell: bash
       env:
+        INPUT_SCAN_MODE: ${{ inputs.scan-mode }}
+        INPUT_POLICY_FILE: ${{ inputs.policy-file }}
         INPUT_EXCLUDE_PATTERNS: ${{ inputs.exclude-patterns }}
-        INPUT_ALLOWLIST_FILE: ${{ inputs.allowlist-file }}
         INPUT_FAIL_ON_WARN: ${{ inputs.fail-on-warn }}
-        INPUT_DISABLE_HOMOGLYPHS: ${{ inputs.disable-homoglyphs }}
         INPUT_DISABLE_ANNOTATIONS: ${{ inputs.disable-annotations }}
         INPUT_SARIF_FILE: ${{ inputs.sarif-file }}
+        INPUT_BASE_SHA: ${{ steps.params.outputs.base_sha }}
+        PYTHONDONTWRITEBYTECODE: '1'
       run: |
-        chmod +x "${{ github.action_path }}/entrypoint.sh"
-        if [ "${{ steps.filelist.outputs.mode }}" = "all" ]; then
-          "${{ github.action_path }}/entrypoint.sh" --all
-        else
-          "${{ github.action_path }}/entrypoint.sh" "${{ steps.filelist.outputs.filelist }}"
+        ARGS=()
+        if [ "${{ inputs.scan-mode }}" = "all" ]; then
+          ARGS+=(--all)
+        elif [ -f "${{ steps.params.outputs.file_list }}" ]; then
+          ARGS+=(--file-list "${{ steps.params.outputs.file_list }}")
         fi
+        if [ -n "${{ steps.params.outputs.base_sha }}" ]; then
+          ARGS+=(--base-sha "${{ steps.params.outputs.base_sha }}")
+        fi
+        ARGS+=(--no-color)
+        python3 "${{ github.action_path }}/src/main.py" "${ARGS[@]}"

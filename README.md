@@ -1,35 +1,81 @@
 # Unicode Safety Check
 
-A GitHub Action that detects adversarial Unicode in pull requests and pushes. Catches invisible characters, bidirectional text attacks, homoglyph spoofing, Private Use Area code points, variation selector abuse, and encoding issues before they reach your codebase.
+A GitHub Action that detects adversarial Unicode in pull requests. Language-aware, diff-aware, policy-driven.
 
-**Zero config. Language-agnostic. No dependencies. SARIF output for GitHub Code Scanning.**
+Catches bidi attacks, invisible characters, homoglyph spoofing, confusable identifier collisions, variation selector abuse, suspicious spacing, normalization drift, control characters, and encoding issues.
 
-Motivated by supply-chain attacks like [Glassworm](https://arstechnica.com/security/2026/03/supply-chain-attack-using-invisible-code-hits-github-and-other-repositories/) (2026) and [Trojan Source](https://trojansource.codes/) (CVE-2021-42574).
+**Zero config. Language-agnostic. SARIF output for Code Scanning.**
 
 ## Quick Start
 
-Add to any workflow:
-
 ```yaml
-- uses: dcondrey/unicode-safety-check@v1
+- uses: dcondrey/unicode-safety-check@v2
 ```
 
-That's it. On pull requests it scans only changed files. Findings appear as inline PR annotations.
+On pull requests, only changed lines get the full check. Critical checks (bidi, tag chars) run on all lines.
 
 ## What It Detects
 
-| Rule | Category | Characters | Severity |
-|------|----------|-----------|----------|
-| USC001 | **Bidi overrides** | RLO, LRO, RLE, LRE, PDF, FSI, LRI, RLI, PDI, LRM, RLM, ALM | Error |
-| USC002 | **Private Use Area** | U+E000-F8FF, U+F0000-FFFFD, U+100000-10FFFD | Error |
-| USC003 | **Tag characters** | U+E0001-E007F (Glassworm-style payload encoding) | Error |
-| USC004 | **Invisible characters** | Zero-width space/joiner/non-joiner, word joiner, Mongolian vowel separator, soft hyphen | Error |
-| USC005 | **Misplaced BOM** | U+FEFF after byte 0 | Error |
-| USC006 | **Annotation anchors** | U+FFF9-FFFB (interlinear annotations) | Error |
-| USC007 | **Deprecated format chars** | U+206A-206F, U+FFF0-FFF8 | Error |
-| USC008 | **Homoglyphs** | Cyrillic/Greek lookalikes for Latin letters | Warning |
-| USC009 | **Invalid encoding** | Non-UTF-8 byte sequences | Error |
-| USC010 | **Variation selectors** | U+FE00-FE0F, U+E0100-E01EF (3+ per line flags payload encoding) | Error |
+| Rule | Category | Severity | What it catches |
+|------|----------|----------|-----------------|
+| USC001 | **Bidi controls** | Critical | U+202A-202E, U+2066-2069, U+200E/F, U+061C. Trojan Source primitives. |
+| USC002 | **Invisible format chars** | Critical | ZWS, ZWNJ, ZWJ, word joiner, soft hyphen, Mongolian vowel separator. |
+| USC003 | **Mixed-script identifier** | High | Single identifier mixing Latin + Cyrillic, Latin + Greek, etc. |
+| USC004 | **Confusable collision** | High | Two identifiers in the same file that collapse to the same skeleton. |
+| USC005 | **Suspicious spacing** | Medium | NBSP, figure space, thin space, ideographic space in code. |
+| USC006 | **Normalization drift** | Medium | Text that changes under NFC/NFKC normalization. |
+| USC007 | **Control characters** | Critical | Any Cc character except tab, newline, carriage return. |
+| USC008 | **Invalid encoding** | Critical | Non-UTF-8 byte sequences. |
+| USC009 | **Misplaced BOM** | Critical | Byte-order mark after start of file. |
+| USC010 | **Variation selectors** | Critical | 3+ variation selectors per line (Glassworm-style payload encoding). |
+| USC011 | **Private Use Area** | Critical | U+E000-F8FF, supplementary PUA planes. |
+| USC012 | **Tag characters** | Critical | U+E0001-E007F (Glassworm payload encoding). |
+| USC013 | **Deprecated format** | Critical | U+206A-206F, U+FFF0-FFF8. |
+| USC014 | **Annotation anchors** | Critical | U+FFF9-FFFB (interlinear annotations). |
+| USC015 | **Bidi pairing** | Critical | Unbalanced bidi embedding/override/isolate controls. |
+| USC016 | **Default-ignorable** | High | Default-ignorable code points outside specific known categories. |
+| USC017 | **Homoglyphs** | High | Cyrillic/Greek/Armenian characters that look like Latin. |
+| USC018 | **Mixed line endings** | Medium | CRLF + LF in the same file. |
+| USC019 | **Non-ASCII identifier** | Medium | Non-ASCII in identifiers when policy is `ascii-only`. |
+
+## Key Features
+
+### Language-aware context detection
+
+Rules are applied differently based on lexical context:
+
+- **Identifiers**: strictest rules (mixed-script, confusable collision, invisible chars all fail)
+- **Comments**: medium rules (most things warn, confusable collisions ignored)
+- **Strings**: loosest rules (only invisible chars warn)
+
+Supported languages: Python, JavaScript/TypeScript, Go, Rust, Java, C/C++, C#, Ruby, PHP, Shell, YAML, SQL, and more.
+
+### Diff-aware scanning
+
+By default, only newly added or modified lines get the full check suite. Critical checks (bidi controls, tag characters, PUA) always run on all lines. This cuts noise on existing codebases.
+
+### Confusable skeleton comparison
+
+Computes Unicode TR39 confusable skeletons for all identifiers in a file. If two different identifiers collapse to the same skeleton (`scope` vs `scоpe`), the check fails with both locations.
+
+### File risk levels
+
+Files are classified by risk:
+
+- **High risk** (code, config, CI): critical + high findings fail the check
+- **Medium risk** (docs, markup): only critical findings fail
+- **Low risk** (localization): only critical findings fail, most checks are advisory
+
+### Rich diagnostics
+
+Every finding includes the Unicode code point, character name, escaped representation, and a surrounding text snippet:
+
+```
+CRITICAL [USC001 bidi-control] src/auth.py:118:5
+  U+202E RIGHT-TO-LEFT OVERRIDE
+  Bidirectional control character in identifier
+  near: "isAdmin\u{202E} \u{2066}// check later\u{2069}"
+```
 
 ## Usage
 
@@ -45,28 +91,24 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: dcondrey/unicode-safety-check@v1
+      - uses: dcondrey/unicode-safety-check@v2
 ```
 
 ### Full repo scan
 
 ```yaml
-- uses: dcondrey/unicode-safety-check@v1
+- uses: dcondrey/unicode-safety-check@v2
   with:
     scan-mode: all
 ```
 
-### With GitHub Code Scanning (SARIF)
-
-Findings appear in the repository's **Security > Code scanning** tab:
+### With Code Scanning (SARIF)
 
 ```yaml
 name: Security
 on: [pull_request, push]
-
 permissions:
   security-events: write
-
 jobs:
   unicode-safety:
     runs-on: ubuntu-latest
@@ -74,92 +116,124 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - uses: dcondrey/unicode-safety-check@v1
+      - uses: dcondrey/unicode-safety-check@v2
         id: scan
         with:
           sarif-file: unicode-safety.sarif
         continue-on-error: true
-
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: unicode-safety.sarif
 ```
 
-### With options
+### With policy file
 
 ```yaml
-- uses: dcondrey/unicode-safety-check@v1
+- uses: dcondrey/unicode-safety-check@v2
   with:
-    exclude-patterns: |
-      docs/translations/
-      fixtures/unicode-samples/
-    allowlist-file: .unicode-allowlist
-    fail-on-warn: 'true'
+    policy-file: .unicode-safety.yml
 ```
 
 ### Using outputs
 
 ```yaml
-- uses: dcondrey/unicode-safety-check@v1
-  id: unicode
-- run: echo "Found ${{ steps.unicode.outputs.findings }} issue(s) in ${{ steps.unicode.outputs.files-scanned }} files"
+- uses: dcondrey/unicode-safety-check@v2
+  id: scan
+- run: |
+    echo "Findings: ${{ steps.scan.outputs.findings }}"
+    echo "Critical: ${{ steps.scan.outputs.critical }}"
+    echo "High: ${{ steps.scan.outputs.high }}"
 ```
 
 ## Inputs
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `scan-mode` | `changed` | `changed` scans only PR/push diff; `all` scans the entire repo. |
-| `exclude-patterns` | _(none)_ | Newline-separated regex patterns for paths to skip (added to built-in exclusions). |
-| `allowlist-file` | _(none)_ | Path to a file with Perl-compatible regexes, one per line. Matching lines are skipped. |
-| `fail-on-warn` | `false` | Treat warnings (homoglyphs) as errors that fail the check. |
-| `disable-homoglyphs` | `false` | Skip homoglyph detection entirely. |
+| `scan-mode` | `changed` | `changed` scans PR diff only; `all` scans entire repo. |
+| `policy-file` | _(none)_ | Path to `.unicode-safety.yml` policy file. |
+| `exclude-patterns` | _(none)_ | Newline-separated path patterns to exclude. |
+| `fail-on-warn` | `false` | Treat medium/low findings as errors. |
 | `disable-annotations` | `false` | Skip inline PR annotations. |
-| `sarif-file` | _(none)_ | Path to write SARIF output. Use with `github/codeql-action/upload-sarif`. |
+| `sarif-file` | _(none)_ | Path to write SARIF output. |
 
 ## Outputs
 
 | Output | Description |
 |--------|-------------|
-| `findings` | Total number of findings. |
-| `files-scanned` | Number of files scanned. |
-| `sarif-file` | Path to the SARIF file (if generated). |
+| `findings` | Total finding count. |
+| `files-scanned` | Files scanned. |
+| `critical` | Critical severity count. |
+| `high` | High severity count. |
+| `sarif-file` | Path to SARIF file (if generated). |
 
-## Built-in Exclusions
+## Policy File
 
-Binary files are auto-detected and skipped. These paths are excluded by default:
+Copy `policy.default.yml` to `.unicode-safety.yml` in your repo:
 
-`.git/`, `node_modules/`, `.vscode/`, `__pycache__/`, `vendor/`, `dist/`, `build/`, `_site/`, `.next/`, `target/`, and common binary extensions (`.png`, `.jpg`, `.woff2`, `.pdf`, `.wasm`, `.pyc`, `.class`, `.jar`, `.zip`, `.tar.*`, `.lock`, `.min.js`, `.min.css`, `.map`, `.pb.go`, `*_generated.*`, `*.generated.*`).
+```yaml
+version: 1
+encoding: utf-8-only
+identifier_policy: ascii-only  # or: latin-extended, permitted-scripts
 
-## Allowlist File Format
+# Allowlist specific characters in specific paths
+allow:
+  - paths: ["locales/ar/**/*.json"]
+    characters: [ZWJ, ZWNJ]
+    reason: "Arabic text shaping"
+  - paths: ["docs/**/*.md"]
+    characters: [NBSP]
+    reason: "Non-breaking spaces in docs"
 
-Create a file (e.g., `.unicode-allowlist`) with one Perl-compatible regex per line:
-
+# Per-context rules
+contexts:
+  identifier:
+    mixed-script: fail
+    confusable-collision: fail
+    invisible-format: fail
+  comment:
+    mixed-script: warn
+    invisible-format: warn
+  string:
+    invisible-format: warn
 ```
-# Allow discussion of zero-width characters by code point
-U\+200[BCDEF]
 
-# Allow specific test fixtures
-test/fixtures/unicode
+## Design Philosophy
 
-# Allow soft hyphens in localization files
-\.po$.*\x{00AD}
-```
+This action catches the obvious bad stuff, surfaces the ambiguous stuff, and allows explicit exceptions.
 
-Blank lines and lines starting with `#` are ignored.
+- **Strict defaults.** Bidi controls, invisible characters, and confusable collisions fail immediately.
+- **Explicit exceptions.** Allowlists require a path, character, and reason.
+- **Diff-aware.** Only new or modified lines get the full check. Existing code is not blocked.
+- **Useful diagnostics.** Every finding shows the code point, Unicode name, and escaped snippet.
+- **Context-sensitive.** A ZWJ in an Arabic string is not the same as a ZWJ in a variable name.
+- **Severity buckets.** Critical/high findings fail. Medium/low findings warn. Teams can tune this.
 
-## How It Works
-
-The scanner uses Perl's native Unicode regex engine (pre-installed on all GitHub runners) to detect dangerous code points. No Docker image, no npm install, no runtime dependencies.
-
-For variation selectors specifically, the check uses a threshold of 3+ selectors per line. Legitimate emoji use typically has one variation selector per base character; Glassworm-style payloads chain dozens of them to encode hidden data.
+What this action will not solve: malicious but fully visible text, parser disagreements downstream, font-level confusables in every editor, unsafe copy/paste into terminals. But it shuts down the class of attacks that rely on hidden controls, invisibles, and homoglyph collisions.
 
 ## Requirements
 
-- `actions/checkout@v4` with `fetch-depth: 0` (needed for diff computation in `changed` mode)
-- Runs on `ubuntu-latest` (uses Perl and iconv, both pre-installed)
+- `actions/checkout@v4` with `fetch-depth: 0`
+- Python 3.8+ (pre-installed on all GitHub runners)
+- No pip dependencies for default config; `pyyaml` auto-installed only if using a YAML policy file
+
+## CLI Usage
+
+Run locally without GitHub Actions:
+
+```bash
+# Scan specific files
+python3 src/main.py src/auth.py src/config.py
+
+# Scan entire directory
+python3 src/main.py --all
+
+# With policy
+python3 src/main.py --all --policy .unicode-safety.yml
+
+# SARIF output
+python3 src/main.py --all --sarif-file results.sarif
+```
 
 ## License
 
