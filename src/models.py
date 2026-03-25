@@ -1,7 +1,6 @@
-"""Shared types for the unicode safety checker."""
-
+"""Shared types."""
 from enum import Enum
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 
 class Severity(Enum):
@@ -32,9 +31,9 @@ class Finding(NamedTuple):
     line: int
     col: int
     message: str
-    char_info: str  # e.g. "U+202E RIGHT-TO-LEFT OVERRIDE"
+    char_info: str
     context: Context
-    snippet: str  # surrounding text
+    snippet: str
 
 
 class Token(NamedTuple):
@@ -44,7 +43,6 @@ class Token(NamedTuple):
     col: int
 
 
-# Rule registry: id, name, description, default severity
 RULES = {
     "USC001": ("bidi-control", "Bidirectional control character", Severity.CRITICAL),
     "USC002": ("invisible-format", "Invisible formatting character", Severity.CRITICAL),
