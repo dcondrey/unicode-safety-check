@@ -131,20 +131,11 @@ fn is_triple_lang(lang: &str) -> bool {
 // Tokenizer state
 // ---------------------------------------------------------------------------
 
+#[derive(Default)]
 pub struct TokenizerState {
     pub in_block_comment: bool,
     pub in_multiline_string: bool,
     pub string_delimiter: Option<String>,
-}
-
-impl Default for TokenizerState {
-    fn default() -> Self {
-        Self {
-            in_block_comment: false,
-            in_multiline_string: false,
-            string_delimiter: None,
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------

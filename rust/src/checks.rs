@@ -33,6 +33,7 @@ pub fn sev(rule_id: &str, policy: Option<&Policy>) -> Severity {
 }
 
 /// Construct a Finding with the correct severity.
+#[allow(clippy::too_many_arguments)]
 pub fn make_finding(
     rule_id: &'static str,
     file: &str,
@@ -244,6 +245,7 @@ impl ConfusableTracker {
     }
 
     /// Check an identifier for confusable collision. Only applies to Identifier context.
+    #[allow(clippy::too_many_arguments)]
     pub fn check(
         &mut self,
         text: &str,
@@ -301,23 +303,21 @@ pub fn check_token(tok: &Token, file: &str, policy: &Policy, findings: &mut Vec<
                 scripts.insert(s);
             }
         }
-        if scripts.len() > 1 {
-            if policy.context_action("mixed-script", ctx) != "ignore" {
-                let mut sorted: Vec<&str> = scripts.into_iter().collect();
-                sorted.sort();
-                let info = sorted.join(", ");
-                findings.push(make_finding(
-                    "USC003",
-                    file,
-                    line,
-                    col,
-                    format!("Mixed-script identifier '{}' ({})", text, info),
-                    format!("scripts: {}", info),
-                    ctx,
-                    text.clone(),
-                    Some(policy),
-                ));
-            }
+        if scripts.len() > 1 && policy.context_action("mixed-script", ctx) != "ignore" {
+            let mut sorted: Vec<&str> = scripts.into_iter().collect();
+            sorted.sort();
+            let info = sorted.join(", ");
+            findings.push(make_finding(
+                "USC003",
+                file,
+                line,
+                col,
+                format!("Mixed-script identifier '{}' ({})", text, info),
+                format!("scripts: {}", info),
+                ctx,
+                text.clone(),
+                Some(policy),
+            ));
         }
 
         // Non-ASCII identifier policy (USC019)
@@ -372,7 +372,7 @@ pub fn check_token(tok: &Token, file: &str, policy: &Policy, findings: &mut Vec<
             let cp = ch as u32;
             if let Some(target) = confusable_target(cp) {
                 // Skip ASCII chars themselves
-                if !(0x41 <= cp && cp <= 0x5A) && !(0x61 <= cp && cp <= 0x7A) {
+                if !(0x41..=0x5A).contains(&cp) && !(0x61..=0x7A).contains(&cp) {
                     findings.push(make_finding(
                         "USC017",
                         file,

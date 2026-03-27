@@ -13,6 +13,7 @@ use crate::models::{Context, FileRisk, Severity};
 // Extension sets
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 const HIGH_RISK_EXTS: &[&str] = &[
     ".py",
     ".js",
@@ -59,6 +60,7 @@ const HIGH_RISK_EXTS: &[&str] = &[
     ".dockerfile",
 ];
 
+#[allow(dead_code)]
 const MEDIUM_RISK_EXTS: &[&str] = &[
     ".md",
     ".rst",
@@ -100,6 +102,7 @@ pub fn named_chars(name: &str) -> Option<HashSet<u32>> {
 pub struct AllowEntry {
     pub paths: Vec<String>,
     pub codepoints: HashSet<u32>,
+    #[allow(dead_code)]
     pub reason: String,
 }
 
@@ -109,13 +112,16 @@ pub struct AllowEntry {
 
 #[derive(Debug, Clone)]
 pub struct Policy {
+    #[allow(dead_code)]
     pub encoding: String,
     pub identifier_policy: String,
     pub permitted_scripts: HashSet<String>,
     pub severity_overrides: HashMap<String, Severity>,
+    #[allow(dead_code)]
     pub file_policies: HashMap<FileRisk, Vec<String>>,
     pub allowlist: Vec<AllowEntry>,
     pub context_rules: HashMap<String, HashMap<String, String>>,
+    #[allow(dead_code)]
     pub diff_only: bool,
 }
 
@@ -140,6 +146,7 @@ impl Default for Policy {
 impl Policy {
     /// Determine the risk level for a file path by checking configured
     /// glob patterns first, then falling back to extension-based lookup.
+    #[allow(dead_code)]
     pub fn get_file_risk(&self, path: &str) -> FileRisk {
         let basename = Path::new(path)
             .file_name()
@@ -318,6 +325,7 @@ struct AllowEntryRaw {
     #[serde(default)]
     characters: Vec<CharSpec>,
     #[serde(default)]
+    #[allow(dead_code)]
     contexts: Option<Vec<String>>,
     #[serde(default)]
     reason: String,
