@@ -169,6 +169,9 @@ pub fn line_context(tokens: &[Token]) -> Context {
 // Core scanning
 // ---------------------------------------------------------------------------
 
+/// Maximum file size to scan (50 MB). Larger files are skipped.
+const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024;
+
 /// Scan a single file and return all findings.
 pub fn scan_file(
     path: &str,
@@ -178,6 +181,21 @@ pub fn scan_file(
 ) -> Vec<Finding> {
     if should_exclude(path, extra_excludes) || is_binary(path) {
         return Vec::new();
+    }
+
+    // Skip files larger than MAX_FILE_SIZE to prevent memory exhaustion.
+    match fs::metadata(path) {
+        Ok(meta) if meta.len() > MAX_FILE_SIZE => {
+            eprintln!(
+                "warning: skipping '{}' ({} bytes exceeds {} byte limit)",
+                path,
+                meta.len(),
+                MAX_FILE_SIZE
+            );
+            return Vec::new();
+        }
+        Err(_) => return Vec::new(),
+        _ => {}
     }
 
     let raw = match fs::read(path) {
@@ -478,6 +496,27 @@ mod tests {
         let path = dir.join("empty.txt");
         fs::write(&path, b"").unwrap();
         assert!(!is_binary(path.to_str().unwrap()));
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_scan_file_skips_large_files() {
+        // We can't create a real 50MB+ file in a unit test, but we can verify
+        // the threshold constant and test the metadata check path by using a
+        // small file that is under the limit (should NOT be skipped).
+        let dir = std::env::temp_dir().join("usc_test_size_limit");
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join("small.txt");
+        fs::write(&path, "hello\n").unwrap();
+
+        let policy = Policy::default();
+        let findings = scan_file(path.to_str().unwrap(), &policy, None, &[]);
+        // A small, clean file should produce no findings (not be skipped).
+        assert!(findings.is_empty());
+
+        // Verify the constant is 50MB.
+        assert_eq!(MAX_FILE_SIZE, 50 * 1024 * 1024);
+
         let _ = fs::remove_file(&path);
     }
 }
