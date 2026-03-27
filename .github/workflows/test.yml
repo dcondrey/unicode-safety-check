@@ -21,6 +21,8 @@ jobs:
       - uses: ./
         with:
           scan-mode: all
+          exclude-patterns: |
+            rust/tests/golden/*
 
   test-bidi:
     name: Detect bidi controls
@@ -161,6 +163,8 @@ jobs:
         with:
           scan-mode: all
           disable-annotations: 'true'
+          exclude-patterns: |
+            rust/tests/golden/*
       - name: Verify vendor file was excluded (0 findings)
         env:
           FINDINGS: ${{ steps.scan.outputs.findings }}

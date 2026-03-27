@@ -193,7 +193,7 @@ runs:
           ARGS+=(--no-annotations)
         fi
         if [ -n "$INPUT_SARIF_FILE" ]; then
-          ARGS+=(--sarif "$INPUT_SARIF_FILE")
+          ARGS+=(--sarif-file "$INPUT_SARIF_FILE")
         fi
         ARGS+=(--no-color)
         "$RUNNER_TEMP/unicode-safety-check" "${ARGS[@]}"
