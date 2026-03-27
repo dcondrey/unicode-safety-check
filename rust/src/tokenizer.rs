@@ -127,6 +127,40 @@ fn is_triple_lang(lang: &str) -> bool {
     lang == "python"
 }
 
+fn supports_nested_comments(lang: &str) -> bool {
+    matches!(lang, "rust" | "swift" | "kotlin" | "scala")
+}
+
+fn is_backtick_string_lang(lang: &str) -> bool {
+    matches!(lang, "javascript" | "typescript")
+}
+
+/// Scan `line[start..]` for `*/` respecting nested `/*`. `depth` is the
+/// current nesting depth (must be >= 1). Returns `(new_depth, byte_offset)`
+/// where byte_offset is the position right after the closing `*/` if depth
+/// reaches 0, or `line.len()` if the line ends still inside the comment.
+fn scan_block_comment(line: &str, start: usize, mut depth: u32, nested: bool) -> (u32, usize) {
+    let bytes = line.as_bytes();
+    let mut pos = start;
+    while pos < bytes.len() {
+        if nested && pos + 1 < bytes.len() && bytes[pos] == b'/' && bytes[pos + 1] == b'*' {
+            depth += 1;
+            pos += 2;
+            continue;
+        }
+        if pos + 1 < bytes.len() && bytes[pos] == b'*' && bytes[pos + 1] == b'/' {
+            depth -= 1;
+            pos += 2;
+            if depth == 0 {
+                return (0, pos);
+            }
+            continue;
+        }
+        pos += 1;
+    }
+    (depth, pos)
+}
+
 // ---------------------------------------------------------------------------
 // Tokenizer state
 // ---------------------------------------------------------------------------
@@ -134,6 +168,7 @@ fn is_triple_lang(lang: &str) -> bool {
 #[derive(Default)]
 pub struct TokenizerState {
     pub in_block_comment: bool,
+    pub block_comment_depth: u32,
     pub in_multiline_string: bool,
     pub string_delimiter: Option<String>,
 }
@@ -141,6 +176,11 @@ pub struct TokenizerState {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Convert a byte offset within `s` to a character (scalar) offset.
+fn byte_to_char_offset(s: &str, byte_offset: usize) -> usize {
+    s[..byte_offset].chars().count()
+}
 
 /// Check if a character can start an identifier.
 fn is_ident_start(ch: char) -> bool {
@@ -236,17 +276,20 @@ pub fn tokenize_line(
 
     // --- Block comment continuation ---
     if state.in_block_comment {
-        if let Some(end) = line.find("*/") {
-            let region_end = end + 2;
+        let nested = supports_nested_comments(lang);
+        let (new_depth, end_pos) = scan_block_comment(line, 0, state.block_comment_depth, nested);
+        if new_depth == 0 {
             tokens.extend(extract_words(
-                &line[..region_end],
+                &line[..end_pos],
                 Context::Comment,
                 line_num,
                 0,
             ));
-            pos = region_end;
+            pos = end_pos;
             state.in_block_comment = false;
+            state.block_comment_depth = 0;
         } else {
+            state.block_comment_depth = new_depth;
             tokens.extend(extract_words(line, Context::Comment, line_num, 0));
             return tokens;
         }
@@ -318,19 +361,21 @@ pub fn tokenize_line(
 
         // Block comment start (/*)
         if is_block_lang(lang) && ch == '/' && pos + 1 < bytes.len() && bytes[pos + 1] == b'*' {
-            if let Some(end_rel) = line[pos + 2..].find("*/") {
-                let region_end = pos + 2 + end_rel + 2;
+            let nested = supports_nested_comments(lang);
+            let (depth, end_pos) = scan_block_comment(line, pos + 2, 1, nested);
+            if depth == 0 {
                 tokens.extend(extract_words(
-                    &line[pos..region_end],
+                    &line[pos..end_pos],
                     Context::Comment,
                     line_num,
                     pos,
                 ));
-                pos = region_end;
+                pos = end_pos;
                 continue;
             } else {
                 tokens.extend(extract_words(&line[pos..], Context::Comment, line_num, pos));
                 state.in_block_comment = true;
+                state.block_comment_depth = depth;
                 return tokens;
             }
         }
@@ -348,6 +393,10 @@ pub fn tokenize_line(
                 continue;
             } else {
                 tokens.extend(extract_words(&line[pos..], Context::String, line_num, pos));
+                if ch == '`' && is_backtick_string_lang(lang) {
+                    state.in_multiline_string = true;
+                    state.string_delimiter = Some("`".to_string());
+                }
                 return tokens;
             }
         }
@@ -532,5 +581,62 @@ mod tests {
         assert!(tokens
             .iter()
             .any(|t| t.text == "hello" && t.context == Context::String));
+    }
+
+    #[test]
+    fn test_nested_block_comment_rust() {
+        let mut state = TokenizerState::default();
+        let tokens = tokenize_line("/* /* inner */ still comment */", "rust", &mut state, 1);
+        assert!(!state.in_block_comment);
+        assert_eq!(state.block_comment_depth, 0);
+        // Every word should be a comment
+        for t in &tokens {
+            assert_eq!(
+                t.context,
+                Context::Comment,
+                "token {:?} should be Comment",
+                t.text
+            );
+        }
+    }
+
+    #[test]
+    fn test_nested_block_comment_c_not_nested() {
+        // C does not support nested comments; the first */ closes
+        let mut state = TokenizerState::default();
+        let tokens = tokenize_line("/* /* inner */ outside", "c", &mut state, 1);
+        assert!(!state.in_block_comment);
+        let idents: Vec<_> = tokens
+            .iter()
+            .filter(|t| t.context == Context::Identifier)
+            .map(|t| t.text.as_str())
+            .collect();
+        assert_eq!(idents, vec!["outside"]);
+    }
+
+    #[test]
+    fn test_backtick_template_literal_multiline_js() {
+        let mut state = TokenizerState::default();
+        let t1 = tokenize_line("let s = `hello", "javascript", &mut state, 1);
+        assert!(state.in_multiline_string);
+        assert_eq!(state.string_delimiter.as_deref(), Some("`"));
+        assert!(t1
+            .iter()
+            .any(|t| t.text == "let" && t.context == Context::Identifier));
+        assert!(t1
+            .iter()
+            .any(|t| t.text == "s" && t.context == Context::Identifier));
+        assert!(t1
+            .iter()
+            .any(|t| t.text == "hello" && t.context == Context::String));
+
+        let t2 = tokenize_line("world` + x", "javascript", &mut state, 2);
+        assert!(!state.in_multiline_string);
+        assert!(t2
+            .iter()
+            .any(|t| t.text == "world" && t.context == Context::String));
+        assert!(t2
+            .iter()
+            .any(|t| t.text == "x" && t.context == Context::Identifier));
     }
 }
