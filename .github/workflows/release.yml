@@ -64,7 +64,12 @@ jobs:
         with:
           merge-multiple: true
 
+      - name: Generate SHA256SUMS
+        run: shasum -a 256 unicode-safety-check-*.tar.gz > SHA256SUMS
+
       # Pinned to v2.3.2 (2025-02-12) for supply chain security
       - uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.3.2
         with:
-          files: unicode-safety-check-*.tar.gz
+          files: |
+            unicode-safety-check-*.tar.gz
+            SHA256SUMS

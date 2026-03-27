@@ -114,10 +114,31 @@ runs:
 
         DOWNLOADED=false
         if [ -n "$TARGET" ]; then
-          URL="https://github.com/dcondrey/unicode-safety-check/releases/download/v${VERSION}/unicode-safety-check-${TARGET}.tar.gz"
+          TARBALL="unicode-safety-check-${TARGET}.tar.gz"
+          BASE_URL="https://github.com/dcondrey/unicode-safety-check/releases/download/v${VERSION}"
+          URL="${BASE_URL}/${TARBALL}"
           echo "Downloading $URL"
-          if curl -fsSL "$URL" -o "$RUNNER_TEMP/unicode-safety-check.tar.gz"; then
-            tar -xzf "$RUNNER_TEMP/unicode-safety-check.tar.gz" -C "$RUNNER_TEMP"
+          if curl -fsSL "$URL" -o "$RUNNER_TEMP/$TARBALL"; then
+            ACTUAL_SHA=$(shasum -a 256 "$RUNNER_TEMP/$TARBALL" | awk '{print $1}')
+            echo "Tarball SHA256: $ACTUAL_SHA"
+
+            SUMS_URL="${BASE_URL}/SHA256SUMS"
+            if curl -fsSL "$SUMS_URL" -o "$RUNNER_TEMP/SHA256SUMS"; then
+              EXPECTED_SHA=$(grep "$TARBALL" "$RUNNER_TEMP/SHA256SUMS" | awk '{print $1}')
+              if [ -z "$EXPECTED_SHA" ]; then
+                echo "::error::No checksum entry for $TARBALL in SHA256SUMS"
+                exit 1
+              elif [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+                echo "::error::Checksum mismatch for $TARBALL (expected $EXPECTED_SHA, got $ACTUAL_SHA)"
+                exit 1
+              else
+                echo "Checksum verified."
+              fi
+            else
+              echo "::warning::SHA256SUMS not available for v${VERSION}; skipping checksum verification."
+            fi
+
+            tar -xzf "$RUNNER_TEMP/$TARBALL" -C "$RUNNER_TEMP"
             chmod +x "$RUNNER_TEMP/unicode-safety-check"
             DOWNLOADED=true
           else
