@@ -10,6 +10,29 @@ pub enum Severity {
     Low,
 }
 
+impl Severity {
+    fn rank(&self) -> u8 {
+        match self {
+            Severity::Critical => 3,
+            Severity::High => 2,
+            Severity::Medium => 1,
+            Severity::Low => 0,
+        }
+    }
+}
+
+impl Ord for Severity {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.rank().cmp(&other.rank())
+    }
+}
+
+impl PartialOrd for Severity {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl fmt::Display for Severity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -191,3 +214,44 @@ pub const RULE_IDS: &[&str] = &[
     "USC010", "USC011", "USC012", "USC013", "USC014", "USC015", "USC016", "USC017", "USC018",
     "USC019",
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn severity_ordering() {
+        assert!(Severity::Critical > Severity::High);
+        assert!(Severity::High > Severity::Medium);
+        assert!(Severity::Medium > Severity::Low);
+        assert!(Severity::Critical > Severity::Low);
+    }
+
+    #[test]
+    fn severity_sort() {
+        let mut v = vec![
+            Severity::Low,
+            Severity::Critical,
+            Severity::Medium,
+            Severity::High,
+        ];
+        v.sort();
+        assert_eq!(
+            v,
+            vec![
+                Severity::Low,
+                Severity::Medium,
+                Severity::High,
+                Severity::Critical,
+            ]
+        );
+    }
+
+    #[test]
+    fn severity_equal() {
+        assert_eq!(
+            Severity::Critical.cmp(&Severity::Critical),
+            std::cmp::Ordering::Equal
+        );
+    }
+}

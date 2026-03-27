@@ -23,7 +23,10 @@ fn context_value(ctx: Context) -> &'static str {
 
 /// Get severity from policy overrides or rule default.
 pub fn sev(rule_id: &str, policy: Option<&Policy>) -> Severity {
-    let rule = get_rule(rule_id).expect("unknown rule_id");
+    let rule = match get_rule(rule_id) {
+        Some(r) => r,
+        None => return Severity::Critical,
+    };
     if let Some(p) = policy {
         if let Some(&s) = p.severity_overrides.get(rule.name) {
             return s;
@@ -45,11 +48,14 @@ pub fn make_finding(
     snip: String,
     policy: Option<&Policy>,
 ) -> Finding {
-    let rule = get_rule(rule_id).expect("unknown rule_id");
+    let (rule_name, severity) = match get_rule(rule_id) {
+        Some(r) => (r.name, sev(rule_id, policy)),
+        None => ("unknown", Severity::Critical),
+    };
     Finding {
         rule_id,
-        rule_name: rule.name,
-        severity: sev(rule_id, policy),
+        rule_name,
+        severity,
         file: file.to_string(),
         line,
         col,
@@ -155,14 +161,16 @@ pub fn scan_line_chars(
             continue;
         }
 
-        let rule = get_rule(rule_id).expect("unknown rule_id");
+        let description = get_rule(rule_id)
+            .map(|r| r.description)
+            .unwrap_or("Unknown rule");
         let info = char_info(ch);
         findings.push(make_finding(
             rule_id,
             file,
             line_num,
             col,
-            format!("{} {} in {}", rule.description, info, context_value(ctx)),
+            format!("{} {} in {}", description, info, context_value(ctx)),
             info,
             ctx,
             snippet(line, col, 40),
@@ -894,6 +902,28 @@ mod tests {
     #[test]
     fn test_check_mixed_line_endings_only_cr() {
         assert!(check_mixed_line_endings("hello\rworld\r", "test.py").is_none());
+    }
+
+    #[test]
+    fn test_sev_unknown_rule_returns_critical() {
+        assert_eq!(sev("USCXXX", None), Severity::Critical);
+    }
+
+    #[test]
+    fn test_make_finding_unknown_rule() {
+        let f = make_finding(
+            "USCXXX",
+            "test.py",
+            1,
+            0,
+            "test message".to_string(),
+            "info".to_string(),
+            Context::Other,
+            "snippet".to_string(),
+            None,
+        );
+        assert_eq!(f.rule_name, "unknown");
+        assert_eq!(f.severity, Severity::Critical);
     }
 
     #[test]

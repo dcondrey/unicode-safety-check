@@ -205,6 +205,16 @@ impl Policy {
         false
     }
 
+    /// Determine whether a finding should cause a failure based on its
+    /// severity and the file's risk level.
+    pub fn should_fail(&self, severity: Severity, file_risk: FileRisk) -> bool {
+        match file_risk {
+            FileRisk::High => matches!(severity, Severity::Critical | Severity::High),
+            FileRisk::Medium => matches!(severity, Severity::Critical),
+            FileRisk::Low => matches!(severity, Severity::Critical),
+        }
+    }
+
     /// Return the action for a rule in a given context.
     /// Returns "fail", "warn", or "ignore".
     pub fn context_action(&self, rule_name: &str, context: Context) -> &str {
@@ -646,5 +656,32 @@ mod tests {
         let p = Policy::default();
         // .tar.gz: Path::extension() returns "gz", which is not in any risk list
         assert_eq!(p.get_file_risk("archive.tar.gz"), FileRisk::High);
+    }
+
+    #[test]
+    fn should_fail_high_risk() {
+        let p = Policy::default();
+        assert!(p.should_fail(Severity::Critical, FileRisk::High));
+        assert!(p.should_fail(Severity::High, FileRisk::High));
+        assert!(!p.should_fail(Severity::Medium, FileRisk::High));
+        assert!(!p.should_fail(Severity::Low, FileRisk::High));
+    }
+
+    #[test]
+    fn should_fail_medium_risk() {
+        let p = Policy::default();
+        assert!(p.should_fail(Severity::Critical, FileRisk::Medium));
+        assert!(!p.should_fail(Severity::High, FileRisk::Medium));
+        assert!(!p.should_fail(Severity::Medium, FileRisk::Medium));
+        assert!(!p.should_fail(Severity::Low, FileRisk::Medium));
+    }
+
+    #[test]
+    fn should_fail_low_risk() {
+        let p = Policy::default();
+        assert!(p.should_fail(Severity::Critical, FileRisk::Low));
+        assert!(!p.should_fail(Severity::High, FileRisk::Low));
+        assert!(!p.should_fail(Severity::Medium, FileRisk::Low));
+        assert!(!p.should_fail(Severity::Low, FileRisk::Low));
     }
 }
