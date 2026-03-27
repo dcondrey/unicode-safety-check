@@ -266,9 +266,11 @@ pub fn scan_file(
         Err(_) => return Vec::new(),
     };
 
-    // Check encoding; return early if invalid
-    if let Some(enc_err) = check_encoding(&raw, path, policy) {
-        return vec![enc_err];
+    // Check encoding; return early if invalid (only when policy requires UTF-8)
+    if policy.encoding == "utf-8-only" {
+        if let Some(enc_err) = check_encoding(&raw, path, policy) {
+            return vec![enc_err];
+        }
     }
 
     let content = match std::str::from_utf8(&raw) {
@@ -279,7 +281,7 @@ pub fn scan_file(
     let mut findings: Vec<Finding> = Vec::new();
 
     // Check mixed line endings
-    if let Some(le_err) = check_mixed_line_endings(&content, path, policy) {
+    if let Some(le_err) = check_mixed_line_endings(content, path, policy) {
         findings.push(le_err);
     }
 
@@ -288,7 +290,7 @@ pub fn scan_file(
     let mut tracker = ConfusableTracker::new();
 
     // Split into lines preserving line boundaries
-    let lines = split_lines_keep_ends(&content);
+    let lines = split_lines_keep_ends(content);
 
     for (i, line_text) in lines.iter().enumerate() {
         let line_num = i + 1;

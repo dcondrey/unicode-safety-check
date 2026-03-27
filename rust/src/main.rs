@@ -120,8 +120,16 @@ fn main() -> Result<()> {
         .filter(|f| !should_exclude(f, &excludes))
         .collect();
 
-    // Get changed lines if base_sha is set
-    let changed = base_sha.as_deref().and_then(get_changed_lines);
+    // Get changed lines if base_sha is set and diff_only is enabled
+    let changed = if let Some(sha) = base_sha.as_deref() {
+        if policy.diff_only {
+            get_changed_lines(sha)
+        } else {
+            None // scan all lines
+        }
+    } else {
+        None
+    };
 
     // Scan each file
     let mut all_findings = Vec::new();
@@ -163,9 +171,10 @@ fn main() -> Result<()> {
     write_github_outputs(&all_findings, scanned, sarif_file.as_deref());
 
     // Exit code
-    let has_fail = all_findings
-        .iter()
-        .any(|f| matches!(f.severity, Severity::Critical | Severity::High));
+    let has_fail = all_findings.iter().any(|f| {
+        let risk = policy.get_file_risk(&f.file);
+        policy.should_fail(f.severity, risk)
+    });
     let has_warn = all_findings
         .iter()
         .any(|f| matches!(f.severity, Severity::Medium | Severity::Low));
