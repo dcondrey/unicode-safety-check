@@ -75,7 +75,7 @@ pub fn snippet(text: &str, col: usize, width: usize) -> String {
     let half = width / 2;
     let clamped_col = std::cmp::min(col, chars.len().saturating_sub(1));
     let s = clamped_col.saturating_sub(half);
-    let e = std::cmp::min(chars.len(), clamped_col + half + 1);
+    let e = std::cmp::min(chars.len(), clamped_col + half);
     let mut r: String = chars[s..e].iter().collect();
     // strip trailing \r\n
     while r.ends_with('\r') || r.ends_with('\n') {
@@ -285,7 +285,10 @@ impl ConfusableTracker {
                     Some(policy),
                 ));
             }
-        } else if self.seen.len() < CONFUSABLE_TRACKER_CAP {
+        } else {
+            if self.seen.len() >= CONFUSABLE_TRACKER_CAP {
+                self.seen.clear();
+            }
             self.seen.insert(skel, (text.to_string(), line, col));
         }
     }
@@ -430,7 +433,7 @@ pub fn check_token(tok: &Token, file: &str, policy: &Policy, findings: &mut Vec<
 // ---------------------------------------------------------------------------
 
 /// Check if raw bytes are valid UTF-8. Returns a finding on error.
-pub fn check_encoding(raw: &[u8], file: &str) -> Option<Finding> {
+pub fn check_encoding(raw: &[u8], file: &str, policy: &Policy) -> Option<Finding> {
     match std::str::from_utf8(raw) {
         Ok(_) => None,
         Err(e) => {
@@ -438,10 +441,10 @@ pub fn check_encoding(raw: &[u8], file: &str) -> Option<Finding> {
             Some(Finding {
                 rule_id: "USC008",
                 rule_name: "invalid-encoding",
-                severity: Severity::Critical,
+                severity: sev("USC008", Some(policy)),
                 file: file.to_string(),
                 line: 1,
-                col: 0,
+                col: e.valid_up_to(),
                 message: format!("Not valid UTF-8: {}", info),
                 char_info: info,
                 context: Context::Other,
@@ -456,7 +459,7 @@ pub fn check_encoding(raw: &[u8], file: &str) -> Option<Finding> {
 // ---------------------------------------------------------------------------
 
 /// Check for mixed CRLF/LF/CR line endings. Returns a finding if >1 style present.
-pub fn check_mixed_line_endings(content: &str, file: &str) -> Option<Finding> {
+pub fn check_mixed_line_endings(content: &str, file: &str, policy: &Policy) -> Option<Finding> {
     let has_crlf = content.contains("\r\n");
     let mut has_cr = false;
     let mut has_lf = false;
@@ -495,7 +498,7 @@ pub fn check_mixed_line_endings(content: &str, file: &str) -> Option<Finding> {
         Some(Finding {
             rule_id: "USC018",
             rule_name: "mixed-line-endings",
-            severity: Severity::Medium,
+            severity: sev("USC018", Some(policy)),
             file: file.to_string(),
             line: 1,
             col: 0,

@@ -54,24 +54,49 @@ const EXCLUDE_SUBSTRS: &[&str] = &[
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Simple fnmatch-style glob matching supporting `*` and `?`.
+/// Simple fnmatch-style glob matching supporting `*`, `?`, `[seq]`, and `[!seq]`.
 /// Uses an iterative two-pointer approach to avoid exponential backtracking.
-fn fnmatch(pattern: &str, text: &str) -> bool {
+pub(crate) fn fnmatch(pattern: &str, text: &str) -> bool {
     let pat: Vec<char> = pattern.chars().collect();
     let txt: Vec<char> = text.chars().collect();
     let (mut pi, mut ti) = (0usize, 0usize);
     let (mut star_pi, mut star_ti) = (usize::MAX, 0usize);
 
     while ti < txt.len() {
-        if pi < pat.len() && (pat[pi] == '?' || pat[pi] == txt[ti]) {
+        if pi < pat.len() && pat[pi] == '[' {
+            if let Some((negate, chars, end_pi)) = parse_char_class(&pat, pi) {
+                let matched = chars.contains(&txt[ti]);
+                if matched != negate {
+                    pi = end_pi;
+                    ti += 1;
+                } else if star_pi != usize::MAX {
+                    pi = star_pi + 1;
+                    star_ti += 1;
+                    ti = star_ti;
+                } else {
+                    return false;
+                }
+            } else {
+                // Malformed bracket; treat '[' as literal
+                if pat[pi] == txt[ti] {
+                    pi += 1;
+                    ti += 1;
+                } else if star_pi != usize::MAX {
+                    pi = star_pi + 1;
+                    star_ti += 1;
+                    ti = star_ti;
+                } else {
+                    return false;
+                }
+            }
+        } else if pi < pat.len() && (pat[pi] == '?' || pat[pi] == txt[ti]) {
             pi += 1;
             ti += 1;
         } else if pi < pat.len() && pat[pi] == '*' {
             star_pi = pi;
             star_ti = ti;
-            pi += 1; // try matching '*' with zero chars first
+            pi += 1;
         } else if star_pi != usize::MAX {
-            // backtrack: let the last '*' consume one more character
             pi = star_pi + 1;
             star_ti += 1;
             ti = star_ti;
@@ -79,11 +104,49 @@ fn fnmatch(pattern: &str, text: &str) -> bool {
             return false;
         }
     }
-    // consume trailing '*' in the pattern
+    // consume trailing '*' and char classes in the pattern
     while pi < pat.len() && pat[pi] == '*' {
         pi += 1;
     }
     pi == pat.len()
+}
+
+/// Parse a character class starting at `pat[start]` which must be `[`.
+/// Returns `(negate, char_set, end_index)` where `end_index` is one past the `]`.
+/// `negate` is true when the class is negated (`[!seq]`).
+/// Returns `None` if no closing `]` is found.
+fn parse_char_class(pat: &[char], start: usize) -> Option<(bool, Vec<char>, usize)> {
+    let mut i = start + 1;
+    if i >= pat.len() {
+        return None;
+    }
+    let negate = pat[i] == '!';
+    if negate {
+        i += 1;
+    }
+    let mut chars = Vec::new();
+    // First char after '[' or '[!' can be ']' as a literal
+    if i < pat.len() && pat[i] == ']' {
+        chars.push(']');
+        i += 1;
+    }
+    while i < pat.len() {
+        if pat[i] == ']' {
+            return Some((negate, chars, i + 1));
+        }
+        if i + 2 < pat.len() && pat[i + 1] == '-' && pat[i + 2] != ']' {
+            let lo = pat[i];
+            let hi = pat[i + 2];
+            for c in lo..=hi {
+                chars.push(c);
+            }
+            i += 3;
+        } else {
+            chars.push(pat[i]);
+            i += 1;
+        }
+    }
+    None
 }
 
 /// Check whether a path should be excluded from scanning.
@@ -209,7 +272,7 @@ pub fn scan_file(
     }
 
     let content = match std::str::from_utf8(&raw) {
-        Ok(s) => s.to_owned(),
+        Ok(s) => s,
         Err(_) => return Vec::new(),
     };
 
@@ -321,8 +384,12 @@ fn collect_files_recursive(
 
     for entry in entries.flatten() {
         let path = entry.path();
+        let ft = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if path.is_dir() {
+            if ft.is_dir() {
                 if !exclude_dirs.contains(name) {
                     collect_files_recursive(&path, root, exclude_dirs, files);
                 }

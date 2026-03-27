@@ -1,0 +1,26 @@
+[package]
+name = "unicode-safety-check"
+version = "3.0.0"
+edition = "2021"
+rust-version = "1.74.0"
+description = "Detect adversarial Unicode in source files"
+license = "MIT"
+repository = "https://github.com/dcondrey/unicode-safety-check"
+
+[[bin]]
+name = "unicode-safety-check"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+unicode-general-category = "1"
+unicode-normalization = "0.1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

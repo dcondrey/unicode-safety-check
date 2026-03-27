@@ -4,7 +4,6 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use anyhow::{Context as _, Result};
-use fnmatch_regex::glob_to_regex;
 use serde::Deserialize;
 
 use crate::models::{Context, FileRisk, Severity};
@@ -242,9 +241,7 @@ impl Policy {
 // ---------------------------------------------------------------------------
 
 fn matches_glob(pattern: &str, text: &str) -> bool {
-    glob_to_regex(pattern)
-        .map(|re| re.is_match(text))
-        .unwrap_or(false)
+    crate::scanner::fnmatch(pattern, text)
 }
 
 // ---------------------------------------------------------------------------
