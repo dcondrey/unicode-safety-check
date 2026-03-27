@@ -231,6 +231,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_rule_ids_match_get_rule() {
+        for id in RULE_IDS {
+            assert!(
+                get_rule(id).is_some(),
+                "RULE_IDS contains {} but get_rule returns None",
+                id
+            );
+        }
+    }
+
+    #[test]
     fn severity_ordering() {
         assert!(Severity::Critical > Severity::High);
         assert!(Severity::High > Severity::Medium);

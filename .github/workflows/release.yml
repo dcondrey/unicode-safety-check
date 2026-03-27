@@ -61,6 +61,7 @@ jobs:
         with:
           merge-multiple: true
 
+      # NOTE: For supply chain security, consider pinning to a specific SHA
       - uses: softprops/action-gh-release@v2
         with:
           files: unicode-safety-check-*.tar.gz
