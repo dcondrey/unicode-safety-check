@@ -231,3 +231,233 @@ fn test_sarif_output() {
     // Cleanup
     let _ = std::fs::remove_file(&sarif_path);
 }
+
+#[test]
+fn test_normalization_drift() {
+    let output = run_check("normalization.py", &["--fail-on-warn"]);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "normalization.py should exit 1 with --fail-on-warn"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("USC006"),
+        "normalization.py should trigger USC006, got: {stdout}"
+    );
+    let count = finding_count(&stdout);
+    assert!(
+        count.is_some() && count.unwrap() >= 1,
+        "normalization.py should have at least 1 finding, got: {:?}",
+        count
+    );
+}
+
+#[test]
+fn test_invalid_encoding() {
+    let output = run_check("invalid_utf8.bin", &[]);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "invalid_utf8.bin should exit 1"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("USC008"),
+        "invalid_utf8.bin should trigger USC008, got: {stdout}"
+    );
+    let count = finding_count(&stdout);
+    assert_eq!(
+        count,
+        Some(1),
+        "invalid_utf8.bin should have exactly 1 finding, got: {:?}",
+        count
+    );
+}
+
+#[test]
+fn test_misplaced_bom() {
+    let output = run_check("misplaced_bom.py", &[]);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "misplaced_bom.py should exit 1"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("USC009"),
+        "misplaced_bom.py should trigger USC009, got: {stdout}"
+    );
+    let count = finding_count(&stdout);
+    assert_eq!(
+        count,
+        Some(1),
+        "misplaced_bom.py should have exactly 1 finding, got: {:?}",
+        count
+    );
+}
+
+#[test]
+fn test_variation_selector() {
+    let output = run_check("variation_sel.txt", &[]);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "variation_sel.txt should exit 1"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("USC010"),
+        "variation_sel.txt should trigger USC010, got: {stdout}"
+    );
+    let count = finding_count(&stdout);
+    assert!(
+        count.is_some() && count.unwrap() >= 1,
+        "variation_sel.txt should have at least 1 finding, got: {:?}",
+        count
+    );
+}
+
+#[test]
+fn test_private_use() {
+    let output = run_check("private_use.txt", &[]);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "private_use.txt should exit 1"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("USC011"),
+        "private_use.txt should trigger USC011, got: {stdout}"
+    );
+    let count = finding_count(&stdout);
+    assert!(
+        count.is_some() && count.unwrap() >= 1,
+        "private_use.txt should have at least 1 finding, got: {:?}",
+        count
+    );
+}
+
+#[test]
+fn test_tag_character() {
+    let output = run_check("tag_char.txt", &[]);
+    assert_eq!(output.status.code(), Some(1), "tag_char.txt should exit 1");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("USC012"),
+        "tag_char.txt should trigger USC012, got: {stdout}"
+    );
+    let count = finding_count(&stdout);
+    assert!(
+        count.is_some() && count.unwrap() >= 1,
+        "tag_char.txt should have at least 1 finding, got: {:?}",
+        count
+    );
+}
+
+#[test]
+fn test_deprecated_format() {
+    let output = run_check("deprecated_fmt.txt", &[]);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "deprecated_fmt.txt should exit 1"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("USC013"),
+        "deprecated_fmt.txt should trigger USC013, got: {stdout}"
+    );
+    let count = finding_count(&stdout);
+    assert!(
+        count.is_some() && count.unwrap() >= 1,
+        "deprecated_fmt.txt should have at least 1 finding, got: {:?}",
+        count
+    );
+}
+
+#[test]
+fn test_annotation_anchor() {
+    let output = run_check("annotation.txt", &[]);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "annotation.txt should exit 1"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("USC014"),
+        "annotation.txt should trigger USC014, got: {stdout}"
+    );
+    let count = finding_count(&stdout);
+    assert!(
+        count.is_some() && count.unwrap() >= 3,
+        "annotation.txt should have at least 3 findings (3 annotation chars), got: {:?}",
+        count
+    );
+}
+
+#[test]
+fn test_bidi_pairing() {
+    let output = run_check("bidi_pair.py", &[]);
+    assert_eq!(output.status.code(), Some(1), "bidi_pair.py should exit 1");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("USC015"),
+        "bidi_pair.py should trigger USC015, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("USC001"),
+        "bidi_pair.py should also trigger USC001 (bidi control), got: {stdout}"
+    );
+    let count = finding_count(&stdout);
+    assert!(
+        count.is_some() && count.unwrap() >= 2,
+        "bidi_pair.py should have at least 2 findings, got: {:?}",
+        count
+    );
+}
+
+#[test]
+fn test_default_ignorable() {
+    let output = run_check("ignorable.txt", &["--fail-on-warn"]);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "ignorable.txt should exit 1 with --fail-on-warn"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("USC016"),
+        "ignorable.txt should trigger USC016, got: {stdout}"
+    );
+    let count = finding_count(&stdout);
+    assert!(
+        count.is_some() && count.unwrap() >= 1,
+        "ignorable.txt should have at least 1 finding, got: {:?}",
+        count
+    );
+}
+
+#[test]
+fn test_mixed_line_endings() {
+    let output = run_check("mixed_endings.txt", &["--fail-on-warn"]);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "mixed_endings.txt should exit 1 with --fail-on-warn"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("USC018"),
+        "mixed_endings.txt should trigger USC018, got: {stdout}"
+    );
+    let count = finding_count(&stdout);
+    assert_eq!(
+        count,
+        Some(1),
+        "mixed_endings.txt should have exactly 1 finding, got: {:?}",
+        count
+    );
+}
