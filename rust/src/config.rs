@@ -462,16 +462,16 @@ pub fn load_policy(path: Option<&str>) -> Result<Policy> {
 
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
 
-    let pf: PolicyFile =
-        match ext {
-            "yml" | "yaml" => serde_yml::from_str(&text)
-                .with_context(|| format!("parsing YAML policy: {}", path))?,
-            "json" => serde_json::from_str(&text)
-                .with_context(|| format!("parsing JSON policy: {}", path))?,
-            other => {
-                anyhow::bail!("Unsupported policy format: .{}", other);
-            }
-        };
+    let pf: PolicyFile = match ext {
+        "yml" | "yaml" => serde_yaml_ng::from_str(&text)
+            .with_context(|| format!("parsing YAML policy: {}", path))?,
+        "json" => {
+            serde_json::from_str(&text).with_context(|| format!("parsing JSON policy: {}", path))?
+        }
+        other => {
+            anyhow::bail!("Unsupported policy format: .{}", other);
+        }
+    };
 
     Ok(convert_policy_file(pf))
 }
