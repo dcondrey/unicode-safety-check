@@ -156,9 +156,16 @@ jobs:
         run: |
           mkdir -p vendor
           printf 'pua \xee\x80\x80\n' > vendor/dep.py
-      - uses: ./
+      - id: scan
+        uses: ./
         with:
           scan-mode: all
+          disable-annotations: 'true'
+      - name: Verify vendor file was excluded (0 findings)
+        env:
+          FINDINGS: ${{ steps.scan.outputs.findings }}
+        run: |
+          [ "$FINDINGS" -eq 0 ] || { echo "Expected 0 findings (vendor excluded), got $FINDINGS"; exit 1; }
 
   test-control-chars:
     name: Detect control characters

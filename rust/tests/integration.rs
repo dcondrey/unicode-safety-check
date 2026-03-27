@@ -1,6 +1,14 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+/// Guard that removes a file on drop, even if the test panics.
+struct CleanupFile(PathBuf);
+impl Drop for CleanupFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 fn binary_path() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_unicode-safety-check"))
 }
@@ -178,6 +186,7 @@ fn test_control_detection() {
 fn test_sarif_output() {
     let sarif_path =
         std::env::temp_dir().join(format!("usc-test-sarif-{}.json", std::process::id()));
+    let _cleanup = CleanupFile(sarif_path.clone());
     let sarif_str = sarif_path.to_str().unwrap();
 
     let output = Command::new(binary_path())
@@ -227,9 +236,7 @@ fn test_sarif_output() {
         .iter()
         .any(|r| r.get("ruleId").and_then(|v| v.as_str()) == Some("USC001"));
     assert!(has_usc001, "SARIF results should contain USC001");
-
-    // Cleanup
-    let _ = std::fs::remove_file(&sarif_path);
+    // Cleanup handled by CleanupFile drop guard
 }
 
 #[test]

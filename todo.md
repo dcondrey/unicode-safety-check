@@ -44,8 +44,8 @@ Generated: 2026-03-26 | Updated: 2026-03-26 (re-audit)
 - [x] H-009 [Security] action.yml:63,141 - Script injection via unsanitized inputs
   All `${{ }}` interpolations replaced with `env:` block variables in all three action steps.
 
-- [ ] H-010 [Security] action.yml:107-115 - No checksum verification of downloaded binary
-  Release binary downloaded via curl and executed with no SHA256 or signature check. Publish checksums per release; verify after download.
+- [x] H-010 [Security] action.yml:107-115 - No checksum verification of downloaded binary
+  Added SHA256SUMS generation in release workflow and verification in action download step. Falls back with warning for older releases without checksums.
 
 - [x] H-011 [Security] output.rs:276-278 - Newline injection in GITHUB_OUTPUT
   Strip newlines from sarif_path before writing to GITHUB_OUTPUT.
@@ -175,8 +175,8 @@ Generated: 2026-03-26 | Updated: 2026-03-26 (re-audit)
 - [x] M-041 [Test] integration.rs:109-151 - SARIF test does not verify findings in results
   Added assertions for non-empty results and presence of USC001 ruleId.
 
-- [ ] M-042 [Test] integration.rs - 11 of 19 rules have zero integration test coverage
-  USC006, USC008-USC016, USC018 have no dedicated fixture or assertion.
+- [x] M-042 [Test] integration.rs - 11 of 19 rules have zero integration test coverage
+  Added 11 golden fixtures and integration tests covering all 19 rules. Tests: 130 unit + 20 integration.
 
 - [x] M-043 [Test] integration.rs - No test for exit 0 on warning-only without --fail-on-warn
   Added test_nbsp_exit_zero_without_fail_on_warn test.
@@ -285,20 +285,20 @@ Generated: 2026-03-26 | Updated: 2026-03-26 (re-audit)
 - [x] L-032 [Correctness] action.yml:94-103 - Windows case emits ::error:: but does not exit 1
   Added `exit 1` after the unsupported platform error.
 
-- [ ] L-033 [Maintenance] Cargo.toml:19 - serde_yaml = "0.9" is deprecated/unmaintained
-  Migrate to `serde_yml` or another maintained YAML library.
+- [x] L-033 [Maintenance] Cargo.toml:19 - serde_yaml = "0.9" is deprecated/unmaintained
+  Migrated to `serde_yml = "0.0.12"` in Cargo.toml and config.rs.
 
 - [x] L-034 [Security] release.yml:8-9 - permissions: contents: write is workflow-level
   Moved to job-level: build gets `contents: read`, release gets `contents: write`.
 
-- [ ] L-035 [Test] test.yml:137-151 - test-exclude job has no assertion the file was excluded
-  Test passes if action exits 0, does not verify findings == 0.
+- [x] L-035 [Test] test.yml:137-151 - test-exclude job has no assertion the file was excluded
+  Added step asserting findings == 0 to verify vendor/ exclusion works.
 
 - [x] L-036 [Test] integration.rs:57-85 - confusable/mixed_script tests miss incidental rules
   Added assertions for USC003, USC017, USC019 in confusable and mixed_script tests.
 
-- [ ] L-037 [Test] integration.rs:149-150 - SARIF temp file not cleaned on assertion panic
-  Use a Drop guard or `tempfile::NamedTempFile`.
+- [x] L-037 [Test] integration.rs:149-150 - SARIF temp file not cleaned on assertion panic
+  Added CleanupFile drop guard for automatic cleanup even on panic.
 
 ## INFO
 
@@ -325,21 +325,16 @@ Generated: 2026-03-26 | Updated: 2026-03-26 (re-audit)
 
 | Status | Count |
 |--------|-------|
-| Fixed  | 82    |
+| Fixed  | 87    |
 | Wont-fix | 13  |
-| Open   | 10    |
+| Open   | 5     |
 | **Total** | **105** |
 
-### Remaining open items by priority
+### Remaining open items
 
 | ID | Severity | File | Description |
 |----|----------|------|-------------|
-| H-010 | HIGH | action.yml | No checksum verification of downloaded binary |
 | M-003 | MEDIUM | scanner.rs | TOCTOU race (inherent to design) |
-| M-042 | MEDIUM | integration.rs | 11/19 rules have zero test coverage |
-| L-033 | LOW | Cargo.toml | serde_yaml deprecated |
-| L-035 | LOW | test.yml | test-exclude has no exclusion assertion |
-| L-037 | LOW | integration.rs | SARIF temp file leak on panic |
 | I-001 | INFO | scanner.rs | Missing symlink/permission tests |
 | I-002 | INFO | diff.rs | Missing malformed diff tests |
 | I-003 | INFO | test-rust.yml | Missing CI acceptance tests |
