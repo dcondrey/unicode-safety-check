@@ -165,6 +165,7 @@ pub fn write_step_summary(findings: &[Finding], files_scanned: usize) {
         lines.push("|----------|------|------|------|-------------|".to_string());
         for f in findings.iter().take(20) {
             let msg: String = f.message.chars().take(80).collect();
+            let msg = msg.replace('|', "\\|");
             lines.push(format!(
                 "| {} | {} {} | `{}` | {} | {} |",
                 f.severity, f.rule_id, f.rule_name, f.file, f.line, msg
@@ -238,6 +239,7 @@ pub fn write_sarif(findings: &[Finding], sarif_path: &str) -> Result<()> {
                     "name": "unicode-safety-check",
                     "informationUri": "https://github.com/dcondrey/unicode-safety-check",
                     "version": "3.0.0",
+                    "semanticVersion": "3.0.0",
                     "rules": rules
                 }
             },

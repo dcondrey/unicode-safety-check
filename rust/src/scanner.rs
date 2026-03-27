@@ -267,7 +267,7 @@ pub fn scan_file(
     };
 
     // Check encoding; return early if invalid
-    if let Some(enc_err) = check_encoding(&raw, path) {
+    if let Some(enc_err) = check_encoding(&raw, path, policy) {
         return vec![enc_err];
     }
 
@@ -279,7 +279,7 @@ pub fn scan_file(
     let mut findings: Vec<Finding> = Vec::new();
 
     // Check mixed line endings
-    if let Some(le_err) = check_mixed_line_endings(&content, path) {
+    if let Some(le_err) = check_mixed_line_endings(&content, path, policy) {
         findings.push(le_err);
     }
 
@@ -379,7 +379,10 @@ fn collect_files_recursive(
 ) {
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
-        Err(_) => return,
+        Err(e) => {
+            eprintln!("Warning: cannot read directory {}: {}", dir.display(), e);
+            return;
+        }
     };
 
     for entry in entries.flatten() {
@@ -399,6 +402,8 @@ fn collect_files_recursive(
                     files.push(rel_str);
                 }
             }
+        } else {
+            eprintln!("Warning: skipping file with non-UTF8 name: {:?}", path);
         }
     }
 }
@@ -554,6 +559,23 @@ mod tests {
         assert!(fnmatch("**", "deep/path/file.rs"));
         assert!(fnmatch("a?c", "abc"));
         assert!(!fnmatch("a?c", "abbc"));
+    }
+
+    #[test]
+    fn test_fnmatch_char_class() {
+        assert!(fnmatch("[abc]", "a"));
+        assert!(fnmatch("[abc]", "b"));
+        assert!(!fnmatch("[abc]", "d"));
+        assert!(fnmatch("[a-z]", "m"));
+        assert!(!fnmatch("[a-z]", "M"));
+        assert!(fnmatch("[!abc]", "d"));
+        assert!(!fnmatch("[!abc]", "a"));
+        assert!(fnmatch("*.[ch]", "foo.c"));
+        assert!(fnmatch("*.[ch]", "foo.h"));
+        assert!(!fnmatch("*.[ch]", "foo.o"));
+        // Malformed bracket (no closing ]) treated as literal
+        assert!(fnmatch("[", "["));
+        assert!(!fnmatch("[", "a"));
     }
 
     #[test]

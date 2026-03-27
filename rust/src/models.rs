@@ -1,8 +1,8 @@
 use std::fmt;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
 pub enum Severity {
     Critical,
     High,
@@ -71,6 +71,17 @@ pub enum Context {
     Other,
 }
 
+impl fmt::Display for Context {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Context::Identifier => write!(f, "identifier"),
+            Context::Comment => write!(f, "comment"),
+            Context::String => write!(f, "string"),
+            Context::Other => write!(f, "other"),
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum FileRisk {
     High,
@@ -78,7 +89,7 @@ pub enum FileRisk {
     Low,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Finding {
     pub rule_id: &'static str,
     pub rule_name: &'static str,

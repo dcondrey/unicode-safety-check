@@ -621,34 +621,40 @@ mod tests {
 
     #[test]
     fn test_check_encoding_valid() {
+        let policy = default_policy();
         let raw = b"hello world";
-        assert!(check_encoding(raw, "test.py").is_none());
+        assert!(check_encoding(raw, "test.py", &policy).is_none());
     }
 
     #[test]
     fn test_check_encoding_invalid() {
+        let policy = default_policy();
         let raw: &[u8] = &[0x68, 0x65, 0x6C, 0x6C, 0x6F, 0xFF, 0xFE];
-        let finding = check_encoding(raw, "test.py");
+        let finding = check_encoding(raw, "test.py", &policy);
         assert!(finding.is_some());
         let f = finding.unwrap();
         assert_eq!(f.rule_id, "USC008");
         assert_eq!(f.severity, Severity::Critical);
+        assert_eq!(f.col, 5);
     }
 
     #[test]
     fn test_check_mixed_line_endings_clean_lf() {
-        assert!(check_mixed_line_endings("hello\nworld\n", "test.py").is_none());
+        let policy = default_policy();
+        assert!(check_mixed_line_endings("hello\nworld\n", "test.py", &policy).is_none());
     }
 
     #[test]
     fn test_check_mixed_line_endings_clean_crlf() {
-        assert!(check_mixed_line_endings("hello\r\nworld\r\n", "test.py").is_none());
+        let policy = default_policy();
+        assert!(check_mixed_line_endings("hello\r\nworld\r\n", "test.py", &policy).is_none());
     }
 
     #[test]
     fn test_check_mixed_line_endings_mixed() {
+        let policy = default_policy();
         let content = "line1\r\nline2\nline3\n";
-        let finding = check_mixed_line_endings(content, "test.py");
+        let finding = check_mixed_line_endings(content, "test.py", &policy);
         assert!(finding.is_some());
         let f = finding.unwrap();
         assert_eq!(f.rule_id, "USC018");
@@ -904,7 +910,8 @@ mod tests {
 
     #[test]
     fn test_check_mixed_line_endings_only_cr() {
-        assert!(check_mixed_line_endings("hello\rworld\r", "test.py").is_none());
+        let policy = default_policy();
+        assert!(check_mixed_line_endings("hello\rworld\r", "test.py", &policy).is_none());
     }
 
     #[test]
