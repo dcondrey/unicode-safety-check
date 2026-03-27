@@ -240,6 +240,10 @@ impl Policy {
 // Glob helper
 // ---------------------------------------------------------------------------
 
+// TODO(M-012): Python fnmatch is case-insensitive on macOS (os.path.normcase
+// lowercases). Our fnmatch is always case-sensitive, matching Linux behavior.
+// Adding case-insensitive matching would be unexpected on Linux, so we leave
+// this as-is for now.
 fn matches_glob(pattern: &str, text: &str) -> bool {
     crate::scanner::fnmatch(pattern, text)
 }

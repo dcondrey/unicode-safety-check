@@ -217,6 +217,22 @@ pub fn find_str_end(line: &str, start: usize, quote: char) -> Option<usize> {
     None
 }
 
+/// Find the end of a raw string literal (Python r"..." or r'...') where
+/// backslash is NOT an escape character. Returns `Some(byte_offset)` of
+/// the closing quote, or `None` if unterminated.
+pub fn find_raw_str_end(line: &str, start: usize, quote: char) -> Option<usize> {
+    let bytes = line.as_bytes();
+    let mut pos = start + quote.len_utf8();
+    while pos < bytes.len() {
+        let ch = line[pos..].chars().next().unwrap();
+        if ch == quote {
+            return Some(pos);
+        }
+        pos += ch.len_utf8();
+    }
+    None
+}
+
 /// Extract all identifier-like words from `text` and produce tokens with the
 /// given context. `offset` is the byte offset of `text` within the original
 /// line. Column positions are emitted as character offsets (not byte offsets)
@@ -381,6 +397,18 @@ pub fn tokenize_line(
             return tokens;
         }
 
+        // Lua line comments (--)
+        if lang == "lua" && ch == '-' && pos + 1 < bytes.len() && bytes[pos + 1] == b'-' {
+            tokens.extend(extract_words(
+                line,
+                &line[pos..],
+                Context::Comment,
+                line_num,
+                pos,
+            ));
+            return tokens;
+        }
+
         // Block comment start (/*)
         if is_block_lang(lang) && ch == '/' && pos + 1 < bytes.len() && bytes[pos + 1] == b'*' {
             let nested = supports_nested_comments(lang);
@@ -406,6 +434,35 @@ pub fn tokenize_line(
                 state.in_block_comment = true;
                 state.block_comment_depth = depth;
                 return tokens;
+            }
+        }
+
+        // Python raw strings: r"..." or r'...' (backslash not an escape)
+        if (ch == 'r' || ch == 'R') && lang == "python" && pos + 1 < bytes.len() {
+            let next_ch = line[pos + 1..].chars().next().unwrap();
+            if next_ch == '"' || next_ch == '\'' {
+                let quote_pos = pos + 1;
+                if let Some(end) = find_raw_str_end(line, quote_pos, next_ch) {
+                    let region_end = end + next_ch.len_utf8();
+                    tokens.extend(extract_words(
+                        line,
+                        &line[pos..region_end],
+                        Context::String,
+                        line_num,
+                        pos,
+                    ));
+                    pos = region_end;
+                    continue;
+                } else {
+                    tokens.extend(extract_words(
+                        line,
+                        &line[pos..],
+                        Context::String,
+                        line_num,
+                        pos,
+                    ));
+                    return tokens;
+                }
             }
         }
 
@@ -724,5 +781,50 @@ mod tests {
         assert_eq!(byte_to_char_offset(s, 1), 1); // before '\u{00E9}'
         assert_eq!(byte_to_char_offset(s, 3), 2); // before 'b' (1 + 2 bytes for e-acute)
         assert_eq!(byte_to_char_offset(s, 4), 3); // end
+    }
+
+    #[test]
+    fn test_lua_line_comment() {
+        let mut state = TokenizerState::default();
+        let tokens = tokenize_line("x = 1 -- a comment", "lua", &mut state, 1);
+        let idents: Vec<_> = tokens
+            .iter()
+            .filter(|t| t.context == Context::Identifier)
+            .collect();
+        let comments: Vec<_> = tokens
+            .iter()
+            .filter(|t| t.context == Context::Comment)
+            .collect();
+        assert_eq!(idents.len(), 1);
+        assert_eq!(idents[0].text, "x");
+        assert!(comments.iter().any(|t| t.text == "a"));
+        assert!(comments.iter().any(|t| t.text == "comment"));
+    }
+
+    #[test]
+    fn test_python_raw_string() {
+        let mut state = TokenizerState::default();
+        let tokens = tokenize_line(r#"x = r"hello\nworld" + y"#, "python", &mut state, 1);
+        let idents: Vec<_> = tokens
+            .iter()
+            .filter(|t| t.context == Context::Identifier)
+            .map(|t| t.text.as_str())
+            .collect();
+        assert_eq!(idents, vec!["x", "y"]);
+        // The raw string should contain the backslash literally
+        let strings: Vec<_> = tokens
+            .iter()
+            .filter(|t| t.context == Context::String)
+            .collect();
+        assert!(!strings.is_empty());
+    }
+
+    #[test]
+    fn test_find_raw_str_end() {
+        // Backslash should NOT be treated as escape.
+        // r#""hello\""# is: " h e l l o \ " -- quote at pos 7 closes it.
+        assert_eq!(find_raw_str_end(r#""hello\""#, 0, '"'), Some(7));
+        assert_eq!(find_raw_str_end(r#""simple""#, 0, '"'), Some(7));
+        assert_eq!(find_raw_str_end(r#""unterminated"#, 0, '"'), None);
     }
 }
