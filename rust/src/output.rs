@@ -42,12 +42,18 @@ fn is_invisible(cp: u32) -> bool {
     rule.is_some() || is_vs
 }
 
-/// Replace invisible Unicode chars with `\u{XXXX}` notation for display.
+/// Replace invisible Unicode chars and ASCII control chars with `\u{XXXX}`
+/// notation for display. ASCII control chars (except TAB, LF, CR) are escaped
+/// to prevent terminal escape sequence injection.
 pub fn escape_invisible(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
         let cp = ch as u32;
-        if cp > 0x7F && is_invisible(cp) {
+        if cp < 0x20 && cp != 0x09 && cp != 0x0A && cp != 0x0D {
+            out.push_str(&format!("\\u{{{:04X}}}", cp));
+        } else if cp == 0x7F {
+            out.push_str("\\u{007F}");
+        } else if cp > 0x7F && is_invisible(cp) {
             out.push_str(&format!("\\u{{{:04X}}}", cp));
         } else {
             out.push(ch);
@@ -166,9 +172,10 @@ pub fn write_step_summary(findings: &[Finding], files_scanned: usize) {
         for f in findings.iter().take(20) {
             let msg: String = f.message.chars().take(80).collect();
             let msg = msg.replace('|', "\\|");
+            let safe_file = f.file.replace('|', "\\|").replace('`', "'");
             lines.push(format!(
                 "| {} | {} {} | `{}` | {} | {} |",
-                f.severity, f.rule_id, f.rule_name, f.file, f.line, msg
+                f.severity, f.rule_id, f.rule_name, safe_file, f.line, msg
             ));
         }
         if findings.len() > 20 {
@@ -274,7 +281,8 @@ pub fn write_github_outputs(findings: &[Finding], files_scanned: usize, sarif_pa
         high
     );
     if let Some(sp) = sarif_path {
-        content.push_str(&format!("sarif_file={}\n", sp));
+        let safe_path = sp.replace(['\n', '\r'], "");
+        content.push_str(&format!("sarif_file={}\n", safe_path));
     }
     let _ = OpenOptions::new()
         .create(true)
@@ -349,6 +357,17 @@ mod tests {
         // Soft hyphen
         let input4 = "a\u{00AD}b";
         assert_eq!(escape_invisible(input4), "a\\u{00AD}b");
+
+        // ASCII control chars (ESC, NUL, BEL) are escaped
+        assert_eq!(escape_invisible("a\x1Bb"), "a\\u{001B}b");
+        assert_eq!(escape_invisible("\x00"), "\\u{0000}");
+        assert_eq!(escape_invisible("\x07bell"), "\\u{0007}bell");
+        assert_eq!(escape_invisible("\x7F"), "\\u{007F}");
+
+        // TAB, LF, CR are preserved
+        assert_eq!(escape_invisible("\t"), "\t");
+        assert_eq!(escape_invisible("\n"), "\n");
+        assert_eq!(escape_invisible("\r"), "\r");
     }
 
     #[test]

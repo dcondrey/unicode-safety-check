@@ -107,19 +107,31 @@ pub fn scan_line_chars(
     let mut vs_count: usize = 0;
     let mut embed_depth: i32 = 0;
     let mut isolate_depth: i32 = 0;
+    let mut orphan_embed_closers: i32 = 0;
+    let mut orphan_isolate_closers: i32 = 0;
 
     for (col, ch) in line.chars().enumerate() {
         let cp = ch as u32;
 
-        // Bidi pairing tracking (always)
+        // Bidi pairing tracking (always).
+        // Closers before openers are counted separately so that
+        // sequences like PDF-PDF-LRE-LRE (net 0) are still flagged.
         if BIDI_OPENERS.contains(&cp) {
             embed_depth += 1;
         } else if cp == BIDI_CLOSER_PDF {
-            embed_depth -= 1;
+            if embed_depth > 0 {
+                embed_depth -= 1;
+            } else {
+                orphan_embed_closers += 1;
+            }
         } else if BIDI_ISOLATE_OPENERS.contains(&cp) {
             isolate_depth += 1;
         } else if cp == BIDI_ISOLATE_CLOSER {
-            isolate_depth -= 1;
+            if isolate_depth > 0 {
+                isolate_depth -= 1;
+            } else {
+                orphan_isolate_closers += 1;
+            }
         }
 
         // BOM check
@@ -161,6 +173,12 @@ pub fn scan_line_chars(
             continue;
         }
 
+        // Respect per-context actions from policy (e.g., ignore bidi in comments)
+        let rule_name = get_rule(rule_id).map(|r| r.name).unwrap_or("unknown");
+        if policy.context_action(rule_name, ctx) == "ignore" {
+            continue;
+        }
+
         let description = get_rule(rule_id)
             .map(|r| r.description)
             .unwrap_or("Unknown rule");
@@ -195,35 +213,37 @@ pub fn scan_line_chars(
     }
 
     // Bidi pairing
-    if embed_depth != 0 {
+    if embed_depth != 0 || orphan_embed_closers != 0 {
         let line_preview: String = line.chars().take(80).collect();
+        let total = embed_depth + orphan_embed_closers;
         findings.push(make_finding(
             "USC015",
             file,
             line_num,
             0,
             format!(
-                "Unbalanced bidi embedding/override controls (depth: {})",
-                embed_depth
+                "Unbalanced bidi embedding/override controls (unclosed: {}, orphan closers: {})",
+                embed_depth, orphan_embed_closers
             ),
-            format!("embed imbalance: {}", embed_depth),
+            format!("embed imbalance: {}", total),
             Context::Other,
             line_preview,
             Some(policy),
         ));
     }
-    if isolate_depth != 0 {
+    if isolate_depth != 0 || orphan_isolate_closers != 0 {
         let line_preview: String = line.chars().take(80).collect();
+        let total = isolate_depth + orphan_isolate_closers;
         findings.push(make_finding(
             "USC015",
             file,
             line_num,
             0,
             format!(
-                "Unbalanced bidi isolate controls (depth: {})",
-                isolate_depth
+                "Unbalanced bidi isolate controls (unclosed: {}, orphan closers: {})",
+                isolate_depth, orphan_isolate_closers
             ),
-            format!("isolate imbalance: {}", isolate_depth),
+            format!("isolate imbalance: {}", total),
             Context::Other,
             line_preview,
             Some(policy),
@@ -287,7 +307,14 @@ impl ConfusableTracker {
             }
         } else {
             if self.seen.len() >= CONFUSABLE_TRACKER_CAP {
-                self.seen.clear();
+                // Evict the oldest half instead of clearing everything,
+                // so cross-boundary confusable pairs are still detected.
+                let remove_count = self.seen.len() / 2;
+                let keys_to_remove: Vec<String> =
+                    self.seen.keys().take(remove_count).cloned().collect();
+                for k in keys_to_remove {
+                    self.seen.remove(&k);
+                }
             }
             self.seen.insert(skel, (text.to_string(), line, col));
         }

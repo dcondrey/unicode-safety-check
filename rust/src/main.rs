@@ -175,11 +175,16 @@ fn main() -> Result<()> {
         let risk = policy.get_file_risk(&f.file);
         policy.should_fail(f.severity, risk)
     });
-    let has_warn = all_findings
-        .iter()
-        .any(|f| matches!(f.severity, Severity::Medium | Severity::Low));
+    let has_warn = all_findings.iter().any(|f| {
+        let risk = policy.get_file_risk(&f.file);
+        !policy.should_fail(f.severity, risk)
+            && matches!(f.severity, Severity::Medium | Severity::Low)
+    });
 
     if has_fail || (args.fail_on_warn && has_warn) {
+        // Flush stdout before exiting to avoid losing buffered output.
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
         process::exit(1);
     }
 

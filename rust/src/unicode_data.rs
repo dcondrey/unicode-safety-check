@@ -196,64 +196,21 @@ pub const CONFUSABLES: &[(u32, char)] = &[
     (0x216D, 'C'),
     (0x216E, 'D'),
     (0x216F, 'M'),
-    // Fullwidth uppercase A-Z (0xFF21..0xFF3A)
-    (0xFF21, 'A'),
-    (0xFF22, 'B'),
-    (0xFF23, 'C'),
-    (0xFF24, 'D'),
-    (0xFF25, 'E'),
-    (0xFF26, 'F'),
-    (0xFF27, 'G'),
-    (0xFF28, 'H'),
-    (0xFF29, 'I'),
-    (0xFF2A, 'J'),
-    (0xFF2B, 'K'),
-    (0xFF2C, 'L'),
-    (0xFF2D, 'M'),
-    (0xFF2E, 'N'),
-    (0xFF2F, 'O'),
-    (0xFF30, 'P'),
-    (0xFF31, 'Q'),
-    (0xFF32, 'R'),
-    (0xFF33, 'S'),
-    (0xFF34, 'T'),
-    (0xFF35, 'U'),
-    (0xFF36, 'V'),
-    (0xFF37, 'W'),
-    (0xFF38, 'X'),
-    (0xFF39, 'Y'),
-    (0xFF3A, 'Z'),
-    // Fullwidth lowercase a-z (0xFF41..0xFF5A)
-    (0xFF41, 'a'),
-    (0xFF42, 'b'),
-    (0xFF43, 'c'),
-    (0xFF44, 'd'),
-    (0xFF45, 'e'),
-    (0xFF46, 'f'),
-    (0xFF47, 'g'),
-    (0xFF48, 'h'),
-    (0xFF49, 'i'),
-    (0xFF4A, 'j'),
-    (0xFF4B, 'k'),
-    (0xFF4C, 'l'),
-    (0xFF4D, 'm'),
-    (0xFF4E, 'n'),
-    (0xFF4F, 'o'),
-    (0xFF50, 'p'),
-    (0xFF51, 'q'),
-    (0xFF52, 'r'),
-    (0xFF53, 's'),
-    (0xFF54, 't'),
-    (0xFF55, 'u'),
-    (0xFF56, 'v'),
-    (0xFF57, 'w'),
-    (0xFF58, 'x'),
-    (0xFF59, 'y'),
-    (0xFF5A, 'z'),
+    // Fullwidth A-Z and a-z (0xFF21-0xFF3A, 0xFF41-0xFF5A) handled
+    // programmatically in confusable_target() to avoid 52 table entries.
 ];
 
 /// Look up the confusable target for a codepoint via binary search.
+/// Fullwidth Latin letters are handled programmatically to keep the table small.
 pub fn confusable_target(cp: u32) -> Option<char> {
+    // Fullwidth uppercase A-Z
+    if (0xFF21..=0xFF3A).contains(&cp) {
+        return Some((b'A' + (cp - 0xFF21) as u8) as char);
+    }
+    // Fullwidth lowercase a-z
+    if (0xFF41..=0xFF5A).contains(&cp) {
+        return Some((b'a' + (cp - 0xFF41) as u8) as char);
+    }
     match CONFUSABLES.binary_search_by_key(&cp, |&(k, _)| k) {
         Ok(i) => Some(CONFUSABLES[i].1),
         Err(_) => None,
@@ -269,9 +226,8 @@ pub fn skeleton(s: &str) -> String {
     if s.is_ascii() {
         return s.to_owned();
     }
-    let nfd1: String = s.nfd().collect();
-    let mapped: String = nfd1
-        .chars()
+    let mapped: String = s
+        .nfd()
         .map(|c| confusable_target(c as u32).unwrap_or(c))
         .collect();
     mapped.nfd().collect()
@@ -354,6 +310,11 @@ fn is_in_sorted(arr: &[u32], cp: u32) -> bool {
 ///
 /// Returns `(None, false)` if the codepoint is not suspicious.
 pub fn classify_char(cp: u32) -> (Option<&'static str>, bool) {
+    // Reject codepoints beyond the Unicode maximum
+    if cp > 0x10FFFF {
+        return (None, false);
+    }
+
     // Fast lookups for known sets
     if is_in_sorted(BIDI_CONTROLS, cp) {
         return (Some("USC001"), false);
@@ -366,12 +327,10 @@ pub fn classify_char(cp: u32) -> (Option<&'static str>, bool) {
     }
 
     // General category check for control characters
-    if cp < 0x110000 {
-        if let Some(ch) = char::from_u32(cp) {
-            let cat = get_general_category(ch);
-            if cat == GeneralCategory::Control && !is_in_sorted(ALLOWED_CONTROLS, cp) {
-                return (Some("USC007"), false);
-            }
+    if let Some(ch) = char::from_u32(cp) {
+        let cat = get_general_category(ch);
+        if cat == GeneralCategory::Control && !is_in_sorted(ALLOWED_CONTROLS, cp) {
+            return (Some("USC007"), false);
         }
     }
 

@@ -309,7 +309,7 @@ pub fn tokenize_line(
 
     // --- Multiline string continuation ---
     if state.in_multiline_string {
-        if let Some(ref delim) = state.string_delimiter.clone() {
+        if let Some(delim) = state.string_delimiter.clone() {
             if let Some(end) = line[pos..].find(delim.as_str()) {
                 let abs_end = pos + end;
                 let region_end = abs_end + delim.len();
@@ -438,10 +438,45 @@ pub fn tokenize_line(
         }
 
         // Python raw strings: r"..." or r'...' (backslash not an escape)
+        // Also handles raw triple-quoted: r"""...""" or r'''...'''
         if (ch == 'r' || ch == 'R') && lang == "python" && pos + 1 < bytes.len() {
             let next_ch = line[pos + 1..].chars().next().unwrap();
             if next_ch == '"' || next_ch == '\'' {
                 let quote_pos = pos + 1;
+                // Check for raw triple-quoted string first: r""" or r'''
+                let tri_start = quote_pos;
+                if tri_start + 3 <= bytes.len()
+                    && line.is_char_boundary(tri_start + 3)
+                    && &line[tri_start..tri_start + 3]
+                        == if next_ch == '"' { "\"\"\"" } else { "'''" }
+                {
+                    let tri = &line[tri_start..tri_start + 3];
+                    if let Some(end) = line[tri_start + 3..].find(tri) {
+                        let abs_end = tri_start + 3 + end;
+                        let region_end = abs_end + 3;
+                        tokens.extend(extract_words(
+                            line,
+                            &line[pos..region_end],
+                            Context::String,
+                            line_num,
+                            pos,
+                        ));
+                        pos = region_end;
+                        continue;
+                    } else {
+                        tokens.extend(extract_words(
+                            line,
+                            &line[pos..],
+                            Context::String,
+                            line_num,
+                            pos,
+                        ));
+                        state.in_multiline_string = true;
+                        state.string_delimiter = Some(tri.to_string());
+                        return tokens;
+                    }
+                }
+                // Single raw string: r"..." or r'...'
                 if let Some(end) = find_raw_str_end(line, quote_pos, next_ch) {
                     let region_end = end + next_ch.len_utf8();
                     tokens.extend(extract_words(

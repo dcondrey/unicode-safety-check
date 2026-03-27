@@ -6,10 +6,14 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   test-clean:
     name: Clean repo passes
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,6 +25,7 @@ jobs:
   test-bidi:
     name: Detect bidi controls
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,6 +44,7 @@ jobs:
   test-invisible:
     name: Detect invisible chars
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,6 +63,7 @@ jobs:
   test-confusable:
     name: Detect confusable collision
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -77,6 +84,7 @@ jobs:
   test-mixed-script:
     name: Detect mixed-script identifier
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -97,6 +105,7 @@ jobs:
   test-sarif:
     name: SARIF output
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -119,6 +128,7 @@ jobs:
   test-spacing:
     name: Detect suspicious spacing
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -137,6 +147,7 @@ jobs:
   test-exclude:
     name: Exclusion patterns
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -152,6 +163,7 @@ jobs:
   test-control-chars:
     name: Detect control characters
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:

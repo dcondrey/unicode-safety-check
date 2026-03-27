@@ -179,9 +179,10 @@ pub fn should_exclude(path: &str, extra: &[String]) -> bool {
         }
     }
 
-    // Check extra patterns (fnmatch or substring)
+    // Check extra patterns (fnmatch only; no raw substring matching
+    // to avoid false exclusions like --exclude "build" matching "builder.rs")
     for pat in extra {
-        if fnmatch(pat, path) || path.contains(pat.as_str()) {
+        if fnmatch(pat, path) {
             return true;
         }
     }
@@ -363,13 +364,17 @@ fn split_lines_keep_ends(s: &str) -> Vec<&str> {
 // Directory walking
 // ---------------------------------------------------------------------------
 
+/// Maximum recursion depth for directory walking to prevent stack overflow
+/// from symlink cycles.
+const MAX_DIR_DEPTH: usize = 64;
+
 /// Recursively collect files under `root`, skipping excluded directories and files.
 /// Returns relative paths.
 pub fn collect_files(root: &str) -> Vec<String> {
     let root_path = Path::new(root);
     let exclude_dirs: HashSet<&str> = EXCLUDE_DIRS.iter().copied().collect();
     let mut files = Vec::new();
-    collect_files_recursive(root_path, root_path, &exclude_dirs, &mut files);
+    collect_files_recursive(root_path, root_path, &exclude_dirs, &mut files, 0);
     files
 }
 
@@ -378,7 +383,16 @@ fn collect_files_recursive(
     root: &Path,
     exclude_dirs: &HashSet<&str>,
     files: &mut Vec<String>,
+    depth: usize,
 ) {
+    if depth >= MAX_DIR_DEPTH {
+        eprintln!(
+            "Warning: maximum directory depth ({}) reached at {}; possible symlink cycle",
+            MAX_DIR_DEPTH,
+            dir.display()
+        );
+        return;
+    }
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
         Err(e) => {
@@ -395,8 +409,9 @@ fn collect_files_recursive(
         };
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
             if ft.is_dir() {
-                if !exclude_dirs.contains(name) {
-                    collect_files_recursive(&path, root, exclude_dirs, files);
+                // Skip symlinked directories to prevent cycles
+                if !exclude_dirs.contains(name) && !ft.is_symlink() {
+                    collect_files_recursive(&path, root, exclude_dirs, files, depth + 1);
                 }
             } else if let Ok(rel) = path.strip_prefix(root) {
                 let rel_str = rel.to_string_lossy().to_string();
@@ -442,9 +457,15 @@ mod tests {
         assert!(should_exclude("debug.log", &extra));
         assert!(!should_exclude("debug.txt", &extra));
 
-        // substring match in extra
-        let extra2 = vec!["secret".to_string()];
+        // fnmatch only; substring matching was removed to prevent false exclusions
+        let extra2 = vec!["*secret*".to_string()];
         assert!(should_exclude("path/to/secret/file.txt", &extra2));
+
+        // Plain word no longer matches as substring (M-027 fix)
+        let extra3 = vec!["build".to_string()];
+        assert!(!should_exclude("src/builder.rs", &extra3));
+        // But exact filename match still works
+        assert!(should_exclude("build", &extra3));
     }
 
     #[test]

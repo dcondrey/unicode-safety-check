@@ -11,9 +11,13 @@ on:
       - "rust/**"
       - ".github/workflows/test-rust.yml"
 
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -28,6 +32,7 @@ jobs:
 
   acceptance:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: check
     steps:
       - uses: actions/checkout@v4

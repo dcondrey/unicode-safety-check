@@ -59,16 +59,19 @@ runs:
     - name: Determine scan parameters
       id: params
       shell: bash
+      env:
+        INPUT_SCAN_MODE: ${{ inputs.scan-mode }}
+        EVENT_NAME: ${{ github.event_name }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PUSH_BEFORE_SHA: ${{ github.event.before }}
       run: |
-        SCAN_MODE="${{ inputs.scan-mode }}"
-        if [ "$SCAN_MODE" = "all" ]; then
+        if [ "$INPUT_SCAN_MODE" = "all" ]; then
           echo "scan_mode=all" >> "$GITHUB_OUTPUT"
         else
-          EVENT_NAME="${{ github.event_name }}"
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            BASE_SHA="$PR_BASE_SHA"
           else
-            BASE_SHA="${{ github.event.before }}"
+            BASE_SHA="$PUSH_BEFORE_SHA"
             if [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
               BASE_SHA="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
             fi
@@ -76,17 +79,24 @@ runs:
           echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
           echo "scan_mode=changed" >> "$GITHUB_OUTPUT"
 
-          git diff --name-only --diff-filter=AMR "$BASE_SHA" HEAD \
-            > "$RUNNER_TEMP/unicode_check_files.txt" 2>/dev/null || true
-          echo "file_list=$RUNNER_TEMP/unicode_check_files.txt" >> "$GITHUB_OUTPUT"
-          count=$(wc -l < "$RUNNER_TEMP/unicode_check_files.txt" 2>/dev/null | tr -d ' ')
-          echo "Found $count changed file(s) to scan."
+          if ! git diff --name-only --diff-filter=AMR "$BASE_SHA" HEAD \
+            > "$RUNNER_TEMP/unicode_check_files.txt" 2>&1; then
+            echo "::warning::git diff failed for base SHA $BASE_SHA; falling back to full scan."
+            echo "scan_mode=all" >> "$GITHUB_OUTPUT"
+          else
+            echo "file_list=$RUNNER_TEMP/unicode_check_files.txt" >> "$GITHUB_OUTPUT"
+            count=$(wc -l < "$RUNNER_TEMP/unicode_check_files.txt" 2>/dev/null | tr -d ' ')
+            echo "Found $count changed file(s) to scan."
+          fi
         fi
 
     - name: Download binary
       shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
-        VERSION="${{ inputs.version }}"
+        VERSION="$INPUT_VERSION"
         if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
           echo "::error::Invalid version format: $VERSION (expected semver like 3.0.0)"
           exit 1
@@ -98,7 +108,7 @@ runs:
           macOS-ARM64)  TARGET="aarch64-apple-darwin" ;;
           *)
             echo "::error::Unsupported platform: $RUNNER_OS-$RUNNER_ARCH (Windows is not supported)"
-            TARGET=""
+            exit 1
             ;;
         esac
 
@@ -116,8 +126,8 @@ runs:
         fi
 
         if [ "$DOWNLOADED" != "true" ]; then
-          if [ -x "${{ github.action_path }}/rust/target/release/unicode-safety-check" ]; then
-            cp "${{ github.action_path }}/rust/target/release/unicode-safety-check" "$RUNNER_TEMP/unicode-safety-check"
+          if [ -x "$ACTION_PATH/rust/target/release/unicode-safety-check" ]; then
+            cp "$ACTION_PATH/rust/target/release/unicode-safety-check" "$RUNNER_TEMP/unicode-safety-check"
             echo "Using pre-built binary from action directory."
           else
             echo "::error::No binary available. Download failed and no local build found."
@@ -136,18 +146,33 @@ runs:
         INPUT_DISABLE_ANNOTATIONS: ${{ inputs.disable-annotations }}
         INPUT_SARIF_FILE: ${{ inputs.sarif-file }}
         INPUT_BASE_SHA: ${{ steps.params.outputs.base_sha }}
+        INPUT_FILE_LIST: ${{ steps.params.outputs.file_list }}
       run: |
         ARGS=()
-        SCAN_MODE="${{ inputs.scan-mode }}"
-        FILE_LIST="${{ steps.params.outputs.file_list }}"
-        BASE_SHA="${{ steps.params.outputs.base_sha }}"
-        if [ "$SCAN_MODE" = "all" ]; then
+        if [ "$INPUT_SCAN_MODE" = "all" ]; then
           ARGS+=(--all)
-        elif [ -f "$FILE_LIST" ]; then
-          ARGS+=(--file-list "$FILE_LIST")
+        elif [ -f "$INPUT_FILE_LIST" ]; then
+          ARGS+=(--file-list "$INPUT_FILE_LIST")
         fi
-        if [ -n "$BASE_SHA" ]; then
-          ARGS+=(--base-sha "$BASE_SHA")
+        if [ -n "$INPUT_BASE_SHA" ]; then
+          ARGS+=(--base-sha "$INPUT_BASE_SHA")
+        fi
+        if [ -n "$INPUT_POLICY_FILE" ]; then
+          ARGS+=(--policy "$INPUT_POLICY_FILE")
+        fi
+        if [ -n "$INPUT_EXCLUDE_PATTERNS" ]; then
+          while IFS= read -r pat; do
+            [ -n "$pat" ] && ARGS+=(--exclude "$pat")
+          done <<< "$INPUT_EXCLUDE_PATTERNS"
+        fi
+        if [ "$INPUT_FAIL_ON_WARN" = "true" ]; then
+          ARGS+=(--fail-on-warn)
+        fi
+        if [ "$INPUT_DISABLE_ANNOTATIONS" = "true" ]; then
+          ARGS+=(--no-annotations)
+        fi
+        if [ -n "$INPUT_SARIF_FILE" ]; then
+          ARGS+=(--sarif "$INPUT_SARIF_FILE")
         fi
         ARGS+=(--no-color)
         "$RUNNER_TEMP/unicode-safety-check" "${ARGS[@]}"

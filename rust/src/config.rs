@@ -146,10 +146,13 @@ impl Policy {
             .and_then(|n| n.to_str())
             .unwrap_or(path);
 
-        for (risk, patterns) in &self.file_policies {
-            for pat in patterns {
-                if matches_glob(pat, path) || matches_glob(pat, basename) {
-                    return *risk;
+        // Check risk tiers in priority order (High > Medium > Low) for determinism.
+        for risk in &[FileRisk::High, FileRisk::Medium, FileRisk::Low] {
+            if let Some(patterns) = self.file_policies.get(risk) {
+                for pat in patterns {
+                    if matches_glob(pat, path) || matches_glob(pat, basename) {
+                        return *risk;
+                    }
                 }
             }
         }
