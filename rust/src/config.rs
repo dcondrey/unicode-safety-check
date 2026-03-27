@@ -464,7 +464,7 @@ pub fn load_policy(path: Option<&str>) -> Result<Policy> {
 
     let pf: PolicyFile =
         match ext {
-            "yml" | "yaml" => serde_yaml::from_str(&text)
+            "yml" | "yaml" => serde_yml::from_str(&text)
                 .with_context(|| format!("parsing YAML policy: {}", path))?,
             "json" => serde_json::from_str(&text)
                 .with_context(|| format!("parsing JSON policy: {}", path))?,
