@@ -219,22 +219,17 @@ pub fn find_str_end(line: &str, start: usize, quote: char) -> Option<usize> {
 
 /// Extract all identifier-like words from `text` and produce tokens with the
 /// given context. `offset` is the byte offset of `text` within the original
-/// line (used to compute column positions as character indices).
-pub fn extract_words(text: &str, ctx: Context, line_num: usize, offset: usize) -> Vec<Token> {
+/// line. Column positions are emitted as character offsets (not byte offsets)
+/// for consistency with SARIF startColumn and the Python implementation.
+pub fn extract_words(
+    line: &str,
+    text: &str,
+    ctx: Context,
+    line_num: usize,
+    offset: usize,
+) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut chars = text.char_indices().peekable();
-    // We need to translate byte offsets back to character columns relative to
-    // the full line. `offset` is itself a byte offset into the line, so we
-    // compute the column the same way Python does: character index within the
-    // line. However, the Python code just passes `offset + m.start()` which
-    // are both character-index based (Python strings are char-indexed). Since
-    // Rust strings are byte-indexed we replicate the same semantics by
-    // tracking the character index within `text` and adding the *character
-    // count* up to `offset` in the original line. But callers pass byte
-    // offsets here, and the Python version uses character offsets throughout.
-    // For simplicity (and consistency with the Python port where ASCII is
-    // dominant), we pass byte offsets directly; this matches Python behaviour
-    // when the preceding text is ASCII.
     while let Some(&(byte_idx, ch)) = chars.peek() {
         if is_ident_start(ch) {
             let start = byte_idx;
@@ -252,7 +247,7 @@ pub fn extract_words(text: &str, ctx: Context, line_num: usize, offset: usize) -
                 text: text[start..end].to_string(),
                 context: ctx,
                 line: line_num,
-                col: offset + start,
+                col: byte_to_char_offset(line, offset + start),
             });
         } else {
             chars.next();
@@ -280,6 +275,7 @@ pub fn tokenize_line(
         let (new_depth, end_pos) = scan_block_comment(line, 0, state.block_comment_depth, nested);
         if new_depth == 0 {
             tokens.extend(extract_words(
+                line,
                 &line[..end_pos],
                 Context::Comment,
                 line_num,
@@ -290,7 +286,7 @@ pub fn tokenize_line(
             state.block_comment_depth = 0;
         } else {
             state.block_comment_depth = new_depth;
-            tokens.extend(extract_words(line, Context::Comment, line_num, 0));
+            tokens.extend(extract_words(line, line, Context::Comment, line_num, 0));
             return tokens;
         }
     }
@@ -302,6 +298,7 @@ pub fn tokenize_line(
                 let abs_end = pos + end;
                 let region_end = abs_end + delim.len();
                 tokens.extend(extract_words(
+                    line,
                     &line[pos..region_end],
                     Context::String,
                     line_num,
@@ -311,7 +308,13 @@ pub fn tokenize_line(
                 state.in_multiline_string = false;
                 state.string_delimiter = None;
             } else {
-                tokens.extend(extract_words(&line[pos..], Context::String, line_num, pos));
+                tokens.extend(extract_words(
+                    line,
+                    &line[pos..],
+                    Context::String,
+                    line_num,
+                    pos,
+                ));
                 return tokens;
             }
         }
@@ -324,13 +327,14 @@ pub fn tokenize_line(
         let ch_len = ch.len_utf8();
 
         // Triple-quoted strings (Python)
-        if is_triple_lang(lang) && pos + 3 <= bytes.len() {
+        if is_triple_lang(lang) && pos + 3 <= bytes.len() && line.is_char_boundary(pos + 3) {
             let tri = &line[pos..pos + 3];
             if tri == "\"\"\"" || tri == "'''" {
                 if let Some(end) = line[pos + 3..].find(tri) {
                     let abs_end = pos + 3 + end;
                     let region_end = abs_end + 3;
                     tokens.extend(extract_words(
+                        line,
                         &line[pos..region_end],
                         Context::String,
                         line_num,
@@ -339,7 +343,13 @@ pub fn tokenize_line(
                     pos = region_end;
                     continue;
                 } else {
-                    tokens.extend(extract_words(&line[pos..], Context::String, line_num, pos));
+                    tokens.extend(extract_words(
+                        line,
+                        &line[pos..],
+                        Context::String,
+                        line_num,
+                        pos,
+                    ));
                     state.in_multiline_string = true;
                     state.string_delimiter = Some(tri.to_string());
                     return tokens;
@@ -349,13 +359,25 @@ pub fn tokenize_line(
 
         // Hash comments
         if is_hash_lang(lang) && ch == '#' {
-            tokens.extend(extract_words(&line[pos..], Context::Comment, line_num, pos));
+            tokens.extend(extract_words(
+                line,
+                &line[pos..],
+                Context::Comment,
+                line_num,
+                pos,
+            ));
             return tokens;
         }
 
         // Line comments (//)
         if is_slash_lang(lang) && ch == '/' && pos + 1 < bytes.len() && bytes[pos + 1] == b'/' {
-            tokens.extend(extract_words(&line[pos..], Context::Comment, line_num, pos));
+            tokens.extend(extract_words(
+                line,
+                &line[pos..],
+                Context::Comment,
+                line_num,
+                pos,
+            ));
             return tokens;
         }
 
@@ -365,6 +387,7 @@ pub fn tokenize_line(
             let (depth, end_pos) = scan_block_comment(line, pos + 2, 1, nested);
             if depth == 0 {
                 tokens.extend(extract_words(
+                    line,
                     &line[pos..end_pos],
                     Context::Comment,
                     line_num,
@@ -373,7 +396,13 @@ pub fn tokenize_line(
                 pos = end_pos;
                 continue;
             } else {
-                tokens.extend(extract_words(&line[pos..], Context::Comment, line_num, pos));
+                tokens.extend(extract_words(
+                    line,
+                    &line[pos..],
+                    Context::Comment,
+                    line_num,
+                    pos,
+                ));
                 state.in_block_comment = true;
                 state.block_comment_depth = depth;
                 return tokens;
@@ -384,6 +413,7 @@ pub fn tokenize_line(
         if ch == '"' || ch == '\'' || ch == '`' {
             if let Some(end) = find_str_end(line, pos, ch) {
                 tokens.extend(extract_words(
+                    line,
                     &line[pos..end + ch_len],
                     Context::String,
                     line_num,
@@ -392,7 +422,13 @@ pub fn tokenize_line(
                 pos = end + ch_len;
                 continue;
             } else {
-                tokens.extend(extract_words(&line[pos..], Context::String, line_num, pos));
+                tokens.extend(extract_words(
+                    line,
+                    &line[pos..],
+                    Context::String,
+                    line_num,
+                    pos,
+                ));
                 if ch == '`' && is_backtick_string_lang(lang) {
                     state.in_multiline_string = true;
                     state.string_delimiter = Some("`".to_string());
@@ -417,7 +453,7 @@ pub fn tokenize_line(
                 text: line[start..pos].to_string(),
                 context: Context::Identifier,
                 line: line_num,
-                col: start,
+                col: byte_to_char_offset(line, start),
             });
             continue;
         }
@@ -453,7 +489,8 @@ mod tests {
 
     #[test]
     fn test_extract_words() {
-        let words = extract_words("foo bar_baz 123", Context::Comment, 1, 0);
+        let text = "foo bar_baz 123";
+        let words = extract_words(text, text, Context::Comment, 1, 0);
         assert_eq!(words.len(), 2);
         assert_eq!(words[0].text, "foo");
         assert_eq!(words[0].col, 0);
@@ -638,5 +675,54 @@ mod tests {
         assert!(t2
             .iter()
             .any(|t| t.text == "x" && t.context == Context::Identifier));
+    }
+
+    #[test]
+    fn test_col_is_char_offset_not_byte_offset() {
+        // "\u{00E9}" is e-acute, 2 bytes in UTF-8.
+        // "  \u{00E9}abc" has 'a' at byte offset 4 (2 + 2) but char offset 3 (2 + 1).
+        let line = "  \u{00E9}abc";
+        let mut state = TokenizerState::default();
+        let tokens = tokenize_line(line, "python", &mut state, 1);
+        // The tokenizer should produce one identifier: the whole "\u{00E9}abc"
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].text, "\u{00E9}abc");
+        // char offset of '\u{00E9}' is 2 (two spaces before it)
+        assert_eq!(
+            tokens[0].col, 2,
+            "col should be char offset, not byte offset"
+        );
+
+        // Also test extract_words directly with an offset into multi-byte prefix.
+        // "\u{00E9}" is 2 bytes in UTF-8, so "abc" starts at byte offset 4 in line.
+        let abc_byte_offset = 4; // 2 spaces + 2 bytes for e-acute
+        let words = extract_words(
+            line,
+            &line[abc_byte_offset..],
+            Context::Comment,
+            1,
+            abc_byte_offset,
+        );
+        assert_eq!(words.len(), 1);
+        assert_eq!(words[0].text, "abc");
+        // byte offset 4 in line corresponds to char offset 3
+        assert_eq!(words[0].col, 3, "extract_words col should be char offset");
+    }
+
+    #[test]
+    fn test_byte_to_char_offset_ascii() {
+        assert_eq!(byte_to_char_offset("hello", 0), 0);
+        assert_eq!(byte_to_char_offset("hello", 3), 3);
+        assert_eq!(byte_to_char_offset("hello", 5), 5);
+    }
+
+    #[test]
+    fn test_byte_to_char_offset_multibyte() {
+        // "\u{00E9}" is 2 bytes
+        let s = "a\u{00E9}b";
+        assert_eq!(byte_to_char_offset(s, 0), 0); // before 'a'
+        assert_eq!(byte_to_char_offset(s, 1), 1); // before '\u{00E9}'
+        assert_eq!(byte_to_char_offset(s, 3), 2); // before 'b' (1 + 2 bytes for e-acute)
+        assert_eq!(byte_to_char_offset(s, 4), 3); // end
     }
 }
