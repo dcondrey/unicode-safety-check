@@ -460,18 +460,33 @@ pub fn check_token(tok: &Token, file: &str, policy: &Policy, findings: &mut Vec<
 // ---------------------------------------------------------------------------
 
 /// Check if raw bytes are valid UTF-8. Returns a finding on error.
+/// Converts the byte offset to a line number and character column.
 pub fn check_encoding(raw: &[u8], file: &str, policy: &Policy) -> Option<Finding> {
     match std::str::from_utf8(raw) {
         Ok(_) => None,
         Err(e) => {
-            let info = format!("byte {}: {}", e.valid_up_to(), e);
+            let byte_offset = e.valid_up_to();
+            // Convert byte offset to line:col by scanning the valid prefix
+            let valid_prefix = &raw[..byte_offset];
+            let mut line = 1usize;
+            let mut last_newline = 0usize;
+            for (i, &b) in valid_prefix.iter().enumerate() {
+                if b == b'\n' {
+                    line += 1;
+                    last_newline = i + 1;
+                }
+            }
+            // Col is the number of valid UTF-8 chars on the current line
+            let line_bytes = &valid_prefix[last_newline..];
+            let col = String::from_utf8_lossy(line_bytes).chars().count();
+            let info = format!("byte {}: {}", byte_offset, e);
             Some(Finding {
                 rule_id: "USC008",
                 rule_name: "invalid-encoding",
                 severity: sev("USC008", Some(policy)),
                 file: file.to_string(),
-                line: 1,
-                col: e.valid_up_to(),
+                line,
+                col,
                 message: format!("Not valid UTF-8: {}", info),
                 char_info: info,
                 context: Context::Other,
@@ -656,13 +671,21 @@ mod tests {
     #[test]
     fn test_check_encoding_invalid() {
         let policy = default_policy();
+        // "hello" followed by invalid bytes; error at byte 5 = char col 5
         let raw: &[u8] = &[0x68, 0x65, 0x6C, 0x6C, 0x6F, 0xFF, 0xFE];
         let finding = check_encoding(raw, "test.py", &policy);
         assert!(finding.is_some());
         let f = finding.unwrap();
         assert_eq!(f.rule_id, "USC008");
         assert_eq!(f.severity, Severity::Critical);
-        assert_eq!(f.col, 5);
+        assert_eq!(f.line, 1);
+        assert_eq!(f.col, 5); // "hello" = 5 chars before the error
+
+        // Test with newline: "ab\n" then invalid byte at position 3
+        let raw2: &[u8] = &[0x61, 0x62, 0x0A, 0xFF];
+        let f2 = check_encoding(raw2, "test.py", &policy).unwrap();
+        assert_eq!(f2.line, 2);
+        assert_eq!(f2.col, 0); // error is at the start of line 2
     }
 
     #[test]

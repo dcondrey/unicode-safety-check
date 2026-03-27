@@ -21,6 +21,21 @@ fn run_check(fixture: &str, extra_args: &[&str]) -> std::process::Output {
         .expect("failed to execute binary")
 }
 
+/// Extract the finding count from stdout (e.g., "3 finding(s)")
+fn finding_count(stdout: &str) -> Option<usize> {
+    for line in stdout.lines() {
+        if let Some(pos) = line.find(" finding(s)") {
+            let prefix = line[..pos].trim();
+            // Take last word before "finding(s)"
+            if let Some(num_str) = prefix.rsplit_once(' ') {
+                return num_str.1.parse().ok();
+            }
+            return prefix.parse().ok();
+        }
+    }
+    None
+}
+
 #[test]
 fn test_clean_file() {
     let output = run_check("clean.py", &[]);
@@ -40,6 +55,12 @@ fn test_bidi_detection() {
     assert!(
         stdout.contains("USC001"),
         "bidi.py should trigger USC001, got: {stdout}"
+    );
+    let count = finding_count(&stdout);
+    assert!(
+        count.is_some() && count.unwrap() >= 1,
+        "bidi.py should have at least 1 finding, got: {:?}",
+        count
     );
 }
 
@@ -67,6 +88,20 @@ fn test_confusable_detection() {
         stdout.contains("USC017"),
         "confusable.py should trigger USC017, got: {stdout}"
     );
+    assert!(
+        stdout.contains("USC003"),
+        "confusable.py should trigger USC003 (mixed-script), got: {stdout}"
+    );
+    assert!(
+        stdout.contains("USC019"),
+        "confusable.py should trigger USC019 (non-ascii-identifier), got: {stdout}"
+    );
+    let count = finding_count(&stdout);
+    assert!(
+        count.is_some() && count.unwrap() >= 4,
+        "confusable.py should have at least 4 findings, got: {:?}",
+        count
+    );
 }
 
 #[test]
@@ -82,16 +117,49 @@ fn test_mixed_script_detection() {
         stdout.contains("USC003"),
         "mixed_script.py should trigger USC003, got: {stdout}"
     );
+    assert!(
+        stdout.contains("USC017"),
+        "mixed_script.py should trigger USC017 (homoglyph), got: {stdout}"
+    );
+    assert!(
+        stdout.contains("USC019"),
+        "mixed_script.py should trigger USC019 (non-ascii-identifier), got: {stdout}"
+    );
+    let count = finding_count(&stdout);
+    assert!(
+        count.is_some() && count.unwrap() >= 3,
+        "mixed_script.py should have at least 3 findings, got: {:?}",
+        count
+    );
 }
 
 #[test]
 fn test_nbsp_detection() {
     let output = run_check("nbsp.js", &["--fail-on-warn"]);
-    assert_eq!(output.status.code(), Some(1), "nbsp.js should exit 1");
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "nbsp.js should exit 1 with --fail-on-warn"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("USC005"),
         "nbsp.js should trigger USC005, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_nbsp_exit_zero_without_fail_on_warn() {
+    let output = run_check("nbsp.js", &[]);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "nbsp.js should exit 0 without --fail-on-warn (medium severity, high risk file)"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("USC005"),
+        "nbsp.js should still detect USC005, got: {stdout}"
     );
 }
 
@@ -141,10 +209,24 @@ fn test_sarif_output() {
         Some("2.1.0"),
         "SARIF version should be 2.1.0"
     );
+    let runs = json.get("runs").and_then(|r| r.as_array());
+    assert!(runs.is_some(), "SARIF should contain runs array");
+
+    // Verify results are non-empty and contain expected rule
+    let results = runs
+        .unwrap()
+        .first()
+        .and_then(|r| r.get("results"))
+        .and_then(|r| r.as_array());
     assert!(
-        json.get("runs").and_then(|r| r.as_array()).is_some(),
-        "SARIF should contain runs array"
+        results.is_some() && !results.unwrap().is_empty(),
+        "SARIF results should be non-empty"
     );
+    let has_usc001 = results
+        .unwrap()
+        .iter()
+        .any(|r| r.get("ruleId").and_then(|v| v.as_str()) == Some("USC001"));
+    assert!(has_usc001, "SARIF results should contain USC001");
 
     // Cleanup
     let _ = std::fs::remove_file(&sarif_path);

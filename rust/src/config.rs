@@ -372,12 +372,30 @@ fn parse_char_spec(spec: &CharSpec) -> HashSet<u32> {
             }
             if let Some(hex) = name.strip_prefix("U+") {
                 if let Ok(cp) = u32::from_str_radix(hex, 16) {
-                    return [cp].into_iter().collect();
+                    if cp <= 0x10FFFF {
+                        return [cp].into_iter().collect();
+                    }
+                    eprintln!(
+                        "warning: U+{:X} exceeds Unicode maximum (U+10FFFF), ignoring",
+                        cp
+                    );
+                    return HashSet::new();
                 }
             }
+            eprintln!("warning: unknown character spec '{}', ignoring", name);
             HashSet::new()
         }
-        CharSpec::Codepoint(cp) => [*cp].into_iter().collect(),
+        CharSpec::Codepoint(cp) => {
+            if *cp <= 0x10FFFF {
+                [*cp].into_iter().collect()
+            } else {
+                eprintln!(
+                    "warning: codepoint {} exceeds Unicode maximum (0x10FFFF), ignoring",
+                    cp
+                );
+                HashSet::new()
+            }
+        }
     }
 }
 

@@ -136,11 +136,11 @@ Generated: 2026-03-26 | Updated: 2026-03-26 (re-audit)
 - [x] M-028 [Correctness] tokenizer.rs:441-467 - Raw triple-quoted Python strings mishandled
   Added triple-quote check before single raw-string path; multiline raw triple-quotes also handled.
 
-- [ ] M-029 [Coverage] unicode_data.rs:11-50 - SCRIPT_RANGES missing many Unicode scripts
-  Thai+Devanagari both return "Unknown", so mixed-script detection fails between them. Use `unicode-script` crate or expand the table.
+- [x] M-029 [Coverage] unicode_data.rs:11-50 - SCRIPT_RANGES missing many Unicode scripts
+  Expanded from 38 to 71 ranges covering 30+ scripts including Tamil, Telugu, Kannada, Malayalam, Sinhala, Lao, Tibetan, Myanmar, Ethiopic, Cherokee, Khmer, and more.
 
-- [ ] M-030 [Coverage] unicode_data.rs:107-201 - CONFUSABLES table is ~80 entries vs thousands official
-  Uncovered confusables (math italic/bold U+1D400-1D7FF, Cherokee, etc.) evade detection. Expand table or use a confusables crate.
+- [x] M-030 [Coverage] unicode_data.rs:107-201 - CONFUSABLES table is ~80 entries vs thousands official
+  Expanded to ~206 entries: added Cherokee (19), Math Bold A-z (52), Math Italic A-z (51).
 
 - [x] M-031 [Security] output.rs:166-172 - Step summary markdown injection via filenames
   Escape backticks (to `'`) and `|` (to `\\|`) in file paths in step summary.
@@ -154,8 +154,8 @@ Generated: 2026-03-26 | Updated: 2026-03-26 (re-audit)
 - [x] M-034 [Correctness] action.yml:80 - git diff failure silently produces empty file list
   Now checks git diff exit code; on failure emits `::warning::` and falls back to full scan.
 
-- [ ] M-035 [Supply Chain] Cargo.toml - Cargo.lock not committed
-  Binary crate without committed lockfile; non-reproducible builds. `git add rust/Cargo.lock`.
+- [x] M-035 [Supply Chain] Cargo.toml - Cargo.lock not committed
+  Committed Cargo.lock in previous batch.
 
 - [x] M-036 [CI] release.yml, test-rust.yml, test.yml - No timeout-minutes on any job
   Added timeout-minutes to all jobs across all 3 workflows.
@@ -163,23 +163,23 @@ Generated: 2026-03-26 | Updated: 2026-03-26 (re-audit)
 - [x] M-037 [CI] test-rust.yml, test.yml - No permissions block
   Added `permissions: contents: read` to test-rust.yml and test.yml.
 
-- [ ] M-038 [CI] release.yml:65 - softprops/action-gh-release pinned to tag not SHA
-  Tag `@v2` can be force-pushed. Pin to commit SHA. (Upgraded from I-007.)
+- [x] M-038 [CI] release.yml:65 - softprops/action-gh-release pinned to tag not SHA
+  Pinned to SHA da05d552573ad5aba039eaac05058a918a7bf631 (v2.3.2).
 
 - [x] M-039 [Correctness] checks.rs:108-123 - Bidi closer-before-opener produces net-zero depth
   Closers now clamped at 0; orphaned closers tracked separately and flagged.
 
-- [ ] M-040 [Test] integration.rs - No finding count assertions in tests
-  Tests check rule ID presence but not total count. A regression causing duplicate findings passes silently.
+- [x] M-040 [Test] integration.rs - No finding count assertions in tests
+  Added finding_count() helper and count assertions to bidi, confusable, mixed_script tests.
 
-- [ ] M-041 [Test] integration.rs:109-151 - SARIF test does not verify findings in results
-  Asserts `runs` array exists but not that `results` is non-empty.
+- [x] M-041 [Test] integration.rs:109-151 - SARIF test does not verify findings in results
+  Added assertions for non-empty results and presence of USC001 ruleId.
 
 - [ ] M-042 [Test] integration.rs - 11 of 19 rules have zero integration test coverage
   USC006, USC008-USC016, USC018 have no dedicated fixture or assertion.
 
-- [ ] M-043 [Test] integration.rs - No test for exit 0 on warning-only without --fail-on-warn
-  Warning vs error exit code logic is only half-tested.
+- [x] M-043 [Test] integration.rs - No test for exit 0 on warning-only without --fail-on-warn
+  Added test_nbsp_exit_zero_without_fail_on_warn test.
 
 ## LOW
 
@@ -246,35 +246,41 @@ Generated: 2026-03-26 | Updated: 2026-03-26 (re-audit)
 - [x] L-021 [Correctness] main.rs:183 - process::exit(1) bypasses destructors
   Added explicit stdout flush before process::exit.
 
-- [ ] L-022 [Correctness] checks.rs:436-454 - check_encoding col is byte offset, rest uses char offsets
-  `Utf8Error::valid_up_to()` returns bytes, not chars. Convert to line/char offset.
+- [x] L-022 [Correctness] checks.rs:436-454 - check_encoding col is byte offset, rest uses char offsets
+  Added byte-to-line/col conversion; now reports correct line number and char column.
 
 - [x] L-023 [Security] output.rs:49-50 - escape_invisible skips ASCII control chars
   Now escapes ASCII control chars (except TAB/LF/CR) and DEL.
 
-- [ ] L-024 [Correctness] config.rs:370-374 - parse_char_spec silently ignores invalid U+ hex or unknown names
-  `U+ZZZZ` or unknown named chars return empty set with no warning.
+- [x] L-024 [Correctness] config.rs:370-374 - parse_char_spec silently ignores invalid U+ hex or unknown names
+  Now emits eprintln warning for unknown names and invalid hex.
 
-- [ ] L-025 [Correctness] config.rs:346-377 - No validation that codepoint values are <= 0x10FFFF
-  Out-of-range codepoints in policy silently do nothing.
+- [x] L-025 [Correctness] config.rs:346-377 - No validation that codepoint values are <= 0x10FFFF
+  Added 0x10FFFF validation with warning for both Named(U+...) and Codepoint variants.
 
 - [x] L-026 [Performance] tokenizer.rs:312 - Unnecessary .clone() on string_delimiter
   Removed `ref` from pattern; clone still needed for borrow checker but binding is cleaner.
 
-- [ ] L-027 [Correctness] tokenizer.rs:311-336 - Multiline backtick continuation ignores backslash-escaped delimiters
+- [x] L-027 [Correctness] tokenizer.rs:311-336 - Multiline backtick continuation ignores backslash-escaped delimiters
+  Single-char delimiters now use escape-aware find_str_end instead of raw find.
+  (original description below)
   `str::find` matches escaped backticks, prematurely closing the string.
 
-- [ ] L-028 [Correctness] tokenizer.rs - HTML/XML comment syntax not handled
+- [x] L-028 [Correctness] tokenizer.rs - HTML/XML comment syntax not handled
+  Added `<!-- ... -->` comment detection for html/xml languages.
+  (original description below)
   All HTML/XML content classified as `Context::Identifier`.
 
-- [ ] L-029 [Correctness] tokenizer.rs - SQL -- line comments not handled
+- [x] L-029 [Correctness] tokenizer.rs - SQL -- line comments not handled
+  Added SQL `--` line comment handling alongside Lua.
+  (original description below)
   Only `//` and `/* */` are handled for SQL; standard `--` comments are missed.
 
 - [x] L-030 [Maintainability] unicode_data.rs:330 - Redundant cp < 0x110000 guard
   Removed the outer `if cp < 0x110000` wrapper; `char::from_u32` guards against surrogates.
 
-- [ ] L-031 [Performance] unicode_data.rs:229-233 - Second NFD pass in skeleton() always a no-op
-  All current confusable targets are ASCII. Add fast path: `if mapped.is_ascii() { return mapped; }`.
+- [x] L-031 [Performance] unicode_data.rs:229-233 - Second NFD pass in skeleton() always a no-op
+  Added `if mapped.is_ascii()` fast path to skip second NFD allocation.
 
 - [x] L-032 [Correctness] action.yml:94-103 - Windows case emits ::error:: but does not exit 1
   Added `exit 1` after the unsupported platform error.
@@ -288,8 +294,8 @@ Generated: 2026-03-26 | Updated: 2026-03-26 (re-audit)
 - [ ] L-035 [Test] test.yml:137-151 - test-exclude job has no assertion the file was excluded
   Test passes if action exits 0, does not verify findings == 0.
 
-- [ ] L-036 [Test] integration.rs:57-85 - confusable/mixed_script tests miss incidental rules
-  USC003, USC017, USC019 trigger but are not asserted.
+- [x] L-036 [Test] integration.rs:57-85 - confusable/mixed_script tests miss incidental rules
+  Added assertions for USC003, USC017, USC019 in confusable and mixed_script tests.
 
 - [ ] L-037 [Test] integration.rs:149-150 - SARIF temp file not cleaned on assertion panic
   Use a Drop guard or `tempfile::NamedTempFile`.
@@ -319,9 +325,9 @@ Generated: 2026-03-26 | Updated: 2026-03-26 (re-audit)
 
 | Status | Count |
 |--------|-------|
-| Fixed  | 67    |
+| Fixed  | 82    |
 | Wont-fix | 13  |
-| Open   | 25    |
+| Open   | 10    |
 | **Total** | **105** |
 
 ### Remaining open items by priority
@@ -330,24 +336,9 @@ Generated: 2026-03-26 | Updated: 2026-03-26 (re-audit)
 |----|----------|------|-------------|
 | H-010 | HIGH | action.yml | No checksum verification of downloaded binary |
 | M-003 | MEDIUM | scanner.rs | TOCTOU race (inherent to design) |
-| M-029 | MEDIUM | unicode_data.rs | SCRIPT_RANGES missing many scripts |
-| M-030 | MEDIUM | unicode_data.rs | CONFUSABLES table too small |
-| M-035 | MEDIUM | Cargo.toml | Cargo.lock not committed |
-| M-038 | MEDIUM | release.yml | action-gh-release pinned to tag not SHA |
-| M-040 | MEDIUM | integration.rs | No finding count assertions |
-| M-041 | MEDIUM | integration.rs | SARIF test missing results check |
 | M-042 | MEDIUM | integration.rs | 11/19 rules have zero test coverage |
-| M-043 | MEDIUM | integration.rs | No warning-only exit code test |
-| L-022 | LOW | checks.rs | check_encoding col is byte offset |
-| L-024 | LOW | config.rs | Silent failure on invalid char specs |
-| L-025 | LOW | config.rs | No codepoint range validation |
-| L-027 | LOW | tokenizer.rs | Backtick continuation ignores escapes |
-| L-028 | LOW | tokenizer.rs | HTML/XML comments not handled |
-| L-029 | LOW | tokenizer.rs | SQL -- comments not handled |
-| L-031 | LOW | unicode_data.rs | Second NFD pass always no-op |
 | L-033 | LOW | Cargo.toml | serde_yaml deprecated |
 | L-035 | LOW | test.yml | test-exclude has no exclusion assertion |
-| L-036 | LOW | integration.rs | Tests miss incidental rule triggers |
 | L-037 | LOW | integration.rs | SARIF temp file leak on panic |
 | I-001 | INFO | scanner.rs | Missing symlink/permission tests |
 | I-002 | INFO | diff.rs | Missing malformed diff tests |

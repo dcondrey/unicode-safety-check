@@ -310,9 +310,20 @@ pub fn tokenize_line(
     // --- Multiline string continuation ---
     if state.in_multiline_string {
         if let Some(delim) = state.string_delimiter.clone() {
-            if let Some(end) = line[pos..].find(delim.as_str()) {
-                let abs_end = pos + end;
-                let region_end = abs_end + delim.len();
+            // For single-char delimiters (backtick), use escape-aware search
+            // so that backslash-escaped delimiters don't prematurely close.
+            // For multi-char delimiters (triple-quote), use raw find.
+            let region_end = if delim.len() == 1 {
+                let delim_ch = delim.chars().next().unwrap();
+                // find_str_end expects pos to be at the opening quote;
+                // we are past it, so search from pos treating it as content.
+                find_str_end(line, pos.saturating_sub(1), delim_ch).map(|e| e + delim_ch.len_utf8())
+            } else {
+                line[pos..]
+                    .find(delim.as_str())
+                    .map(|e| pos + e + delim.len())
+            };
+            if let Some(region_end) = region_end {
                 tokens.extend(extract_words(
                     line,
                     &line[pos..region_end],
@@ -397,8 +408,12 @@ pub fn tokenize_line(
             return tokens;
         }
 
-        // Lua line comments (--)
-        if lang == "lua" && ch == '-' && pos + 1 < bytes.len() && bytes[pos + 1] == b'-' {
+        // Lua/SQL line comments (--)
+        if (lang == "lua" || lang == "sql")
+            && ch == '-'
+            && pos + 1 < bytes.len()
+            && bytes[pos + 1] == b'-'
+        {
             tokens.extend(extract_words(
                 line,
                 &line[pos..],
@@ -407,6 +422,36 @@ pub fn tokenize_line(
                 pos,
             ));
             return tokens;
+        }
+
+        // HTML/XML comments (<!-- ... -->), single-line only for simplicity
+        if (lang == "html" || lang == "xml")
+            && ch == '<'
+            && pos + 3 < bytes.len()
+            && &bytes[pos..pos + 4] == b"<!--"
+        {
+            if let Some(end) = line[pos + 4..].find("-->") {
+                let region_end = pos + 4 + end + 3;
+                tokens.extend(extract_words(
+                    line,
+                    &line[pos..region_end],
+                    Context::Comment,
+                    line_num,
+                    pos,
+                ));
+                pos = region_end;
+                continue;
+            } else {
+                // Unclosed HTML comment; treat rest of line as comment
+                tokens.extend(extract_words(
+                    line,
+                    &line[pos..],
+                    Context::Comment,
+                    line_num,
+                    pos,
+                ));
+                return tokens;
+            }
         }
 
         // Block comment start (/*)

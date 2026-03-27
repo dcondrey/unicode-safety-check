@@ -9,6 +9,7 @@ use unicode_normalization::UnicodeNormalization;
 
 /// Sorted array of (start, end, script_name) for script identification.
 pub const SCRIPT_RANGES: &[(u32, u32, &str)] = &[
+    // Sorted by start codepoint (required for binary search)
     (0x0041, 0x005A, "Latin"),
     (0x0061, 0x007A, "Latin"),
     (0x00C0, 0x00D6, "Latin"),
@@ -26,27 +27,60 @@ pub const SCRIPT_RANGES: &[(u32, u32, &str)] = &[
     (0x0530, 0x058F, "Armenian"),
     (0x0590, 0x05FF, "Hebrew"),
     (0x0600, 0x06FF, "Arabic"),
+    (0x0700, 0x074F, "Syriac"),
     (0x0750, 0x077F, "Arabic"),
+    (0x0780, 0x07BF, "Thaana"),
+    (0x0870, 0x089F, "Arabic"),
+    (0x08A0, 0x08FF, "Arabic"),
     (0x0900, 0x097F, "Devanagari"),
     (0x0980, 0x09FF, "Bengali"),
+    (0x0A00, 0x0A7F, "Gurmukhi"),
+    (0x0A80, 0x0AFF, "Gujarati"),
+    (0x0B00, 0x0B7F, "Oriya"),
+    (0x0B80, 0x0BFF, "Tamil"),
+    (0x0C00, 0x0C7F, "Telugu"),
+    (0x0C80, 0x0CFF, "Kannada"),
+    (0x0D00, 0x0D7F, "Malayalam"),
+    (0x0D80, 0x0DFF, "Sinhala"),
     (0x0E00, 0x0E7F, "Thai"),
+    (0x0E80, 0x0EFF, "Lao"),
+    (0x0F00, 0x0FFF, "Tibetan"),
+    (0x1000, 0x109F, "Myanmar"),
     (0x10A0, 0x10FF, "Georgian"),
+    (0x1100, 0x11FF, "Hangul"),
+    (0x1200, 0x137F, "Ethiopic"),
+    (0x1380, 0x139F, "Ethiopic"),
+    (0x13A0, 0x13FF, "Cherokee"),
+    (0x1400, 0x167F, "Canadian_Aboriginal"),
+    (0x1780, 0x17FF, "Khmer"),
+    (0x19E0, 0x19FF, "Khmer"),
     (0x1D00, 0x1D7F, "Latin"),
     (0x1D80, 0x1DBF, "Latin"),
     (0x1E00, 0x1EFF, "Latin"),
     (0x1F00, 0x1FFF, "Greek"),
     (0x2C60, 0x2C7F, "Latin"),
+    (0x2D00, 0x2D2F, "Georgian"),
+    (0x2D80, 0x2DDF, "Ethiopic"),
     (0x2DE0, 0x2DFF, "Cyrillic"),
     (0x3040, 0x309F, "Hiragana"),
     (0x30A0, 0x30FF, "Katakana"),
+    (0x3130, 0x318F, "Hangul"),
+    (0x31F0, 0x31FF, "Katakana"),
     (0x3400, 0x4DBF, "Han"),
     (0x4E00, 0x9FFF, "Han"),
     (0xA640, 0xA69F, "Cyrillic"),
     (0xA720, 0xA7FF, "Latin"),
+    (0xA8E0, 0xA8FF, "Devanagari"),
     (0xAB30, 0xAB6F, "Latin"),
+    (0xAB70, 0xABBF, "Cherokee"),
     (0xAC00, 0xD7AF, "Hangul"),
+    (0xF900, 0xFAFF, "Han"),
     (0xFB00, 0xFB06, "Latin"),
     (0xFB13, 0xFB17, "Armenian"),
+    (0xFB1D, 0xFB4F, "Hebrew"),
+    (0xFB50, 0xFDFF, "Arabic"),
+    (0xFE70, 0xFEFF, "Arabic"),
+    (0x20000, 0x2A6DF, "Han"),
 ];
 
 /// Determine the script of a character.
@@ -182,9 +216,29 @@ pub const CONFUSABLES: &[(u32, char)] = &[
     (0x057C, 'n'),
     (0x057D, 's'),
     (0x0585, 'o'),
+    // Cherokee (visually similar to Latin)
+    (0x13A0, 'D'), // Cherokee Letter A
+    (0x13A1, 'R'), // Cherokee Letter E
+    (0x13A2, 'T'), // Cherokee Letter I
+    (0x13A9, 'Y'), // Cherokee Letter GI
+    (0x13AA, 'A'), // Cherokee Letter GO
+    (0x13AB, 'J'), // Cherokee Letter GU
+    (0x13AC, 'E'), // Cherokee Letter GV
+    (0x13B1, 'G'), // Cherokee Letter HU
+    (0x13B3, 'W'), // Cherokee Letter LA
+    (0x13B7, 'M'), // Cherokee Letter LU
+    (0x13BB, 'H'), // Cherokee Letter MI
+    (0x13BE, 'S'), // Cherokee Letter NO
+    (0x13C0, 'P'), // Cherokee Letter QU
+    (0x13C2, 'Z'), // Cherokee Letter SV
+    (0x13C3, 'B'), // Cherokee Letter DA
+    (0x13CB, 'V'), // Cherokee Letter TLI
+    (0x13CF, 'K'), // Cherokee Letter TSO
+    (0x13D2, 'L'), // Cherokee Letter WA
+    (0x13DA, 'C'), // Cherokee Letter YA
     // Latin Extended (IPA)
     (0x1D00, 'a'),
-    // Special symbols
+    // Special symbols (must come before Math at U+1D400+)
     (0x2126, 'O'), // OHM SIGN
     (0x212A, 'K'), // KELVIN SIGN
     (0x212B, 'A'), // ANGSTROM SIGN
@@ -196,6 +250,111 @@ pub const CONFUSABLES: &[(u32, char)] = &[
     (0x216D, 'C'),
     (0x216E, 'D'),
     (0x216F, 'M'),
+    // Mathematical Bold A-z (U+1D400-U+1D433)
+    (0x1D400, 'A'),
+    (0x1D401, 'B'),
+    (0x1D402, 'C'),
+    (0x1D403, 'D'),
+    (0x1D404, 'E'),
+    (0x1D405, 'F'),
+    (0x1D406, 'G'),
+    (0x1D407, 'H'),
+    (0x1D408, 'I'),
+    (0x1D409, 'J'),
+    (0x1D40A, 'K'),
+    (0x1D40B, 'L'),
+    (0x1D40C, 'M'),
+    (0x1D40D, 'N'),
+    (0x1D40E, 'O'),
+    (0x1D40F, 'P'),
+    (0x1D410, 'Q'),
+    (0x1D411, 'R'),
+    (0x1D412, 'S'),
+    (0x1D413, 'T'),
+    (0x1D414, 'U'),
+    (0x1D415, 'V'),
+    (0x1D416, 'W'),
+    (0x1D417, 'X'),
+    (0x1D418, 'Y'),
+    (0x1D419, 'Z'),
+    (0x1D41A, 'a'),
+    (0x1D41B, 'b'),
+    (0x1D41C, 'c'),
+    (0x1D41D, 'd'),
+    (0x1D41E, 'e'),
+    (0x1D41F, 'f'),
+    (0x1D420, 'g'),
+    (0x1D421, 'h'),
+    (0x1D422, 'i'),
+    (0x1D423, 'j'),
+    (0x1D424, 'k'),
+    (0x1D425, 'l'),
+    (0x1D426, 'm'),
+    (0x1D427, 'n'),
+    (0x1D428, 'o'),
+    (0x1D429, 'p'),
+    (0x1D42A, 'q'),
+    (0x1D42B, 'r'),
+    (0x1D42C, 's'),
+    (0x1D42D, 't'),
+    (0x1D42E, 'u'),
+    (0x1D42F, 'v'),
+    (0x1D430, 'w'),
+    (0x1D431, 'x'),
+    (0x1D432, 'y'),
+    (0x1D433, 'z'),
+    // Mathematical Italic A-z
+    (0x1D434, 'A'),
+    (0x1D435, 'B'),
+    (0x1D436, 'C'),
+    (0x1D437, 'D'),
+    (0x1D438, 'E'),
+    (0x1D439, 'F'),
+    (0x1D43A, 'G'),
+    (0x1D43B, 'H'),
+    (0x1D43C, 'I'),
+    (0x1D43D, 'J'),
+    (0x1D43E, 'K'),
+    (0x1D43F, 'L'),
+    (0x1D440, 'M'),
+    (0x1D441, 'N'),
+    (0x1D442, 'O'),
+    (0x1D443, 'P'),
+    (0x1D444, 'Q'),
+    (0x1D445, 'R'),
+    (0x1D446, 'S'),
+    (0x1D447, 'T'),
+    (0x1D448, 'U'),
+    (0x1D449, 'V'),
+    (0x1D44A, 'W'),
+    (0x1D44B, 'X'),
+    (0x1D44C, 'Y'),
+    (0x1D44D, 'Z'),
+    (0x1D44E, 'a'),
+    (0x1D44F, 'b'),
+    (0x1D450, 'c'),
+    (0x1D451, 'd'),
+    (0x1D452, 'e'),
+    (0x1D453, 'f'),
+    (0x1D454, 'g'),
+    (0x1D456, 'i'),
+    (0x1D457, 'j'),
+    (0x1D458, 'k'),
+    (0x1D459, 'l'),
+    (0x1D45A, 'm'),
+    (0x1D45B, 'n'),
+    (0x1D45C, 'o'),
+    (0x1D45D, 'p'),
+    (0x1D45E, 'q'),
+    (0x1D45F, 'r'),
+    (0x1D460, 's'),
+    (0x1D461, 't'),
+    (0x1D462, 'u'),
+    (0x1D463, 'v'),
+    (0x1D464, 'w'),
+    (0x1D465, 'x'),
+    (0x1D466, 'y'),
+    (0x1D467, 'z'),
     // Fullwidth A-Z and a-z (0xFF21-0xFF3A, 0xFF41-0xFF5A) handled
     // programmatically in confusable_target() to avoid 52 table entries.
 ];
@@ -230,7 +389,13 @@ pub fn skeleton(s: &str) -> String {
         .nfd()
         .map(|c| confusable_target(c as u32).unwrap_or(c))
         .collect();
-    mapped.nfd().collect()
+    // Second NFD pass only needed if mapping produced decomposable chars.
+    // All current confusable targets are ASCII, so skip if result is ASCII.
+    if mapped.is_ascii() {
+        mapped
+    } else {
+        mapped.nfd().collect()
+    }
 }
 
 // ---------------------------------------------------------------------------
