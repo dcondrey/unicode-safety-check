@@ -31,6 +31,10 @@ inputs:
     description: 'Path to write SARIF output for Code Scanning.'
     required: false
     default: ''
+  version:
+    description: 'Version of the unicode-safety-check binary to download.'
+    required: false
+    default: '3.0.0'
 
 outputs:
   findings:
@@ -56,10 +60,12 @@ runs:
       id: params
       shell: bash
       run: |
-        if [ "${{ inputs.scan-mode }}" = "all" ]; then
+        SCAN_MODE="${{ inputs.scan-mode }}"
+        if [ "$SCAN_MODE" = "all" ]; then
           echo "scan_mode=all" >> "$GITHUB_OUTPUT"
         else
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          EVENT_NAME="${{ github.event_name }}"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
             BASE_SHA="${{ github.event.pull_request.base.sha }}"
           else
             BASE_SHA="${{ github.event.before }}"
@@ -77,13 +83,46 @@ runs:
           echo "Found $count changed file(s) to scan."
         fi
 
-    - name: Install dependencies
+    - name: Download binary
       shell: bash
       run: |
-        # Only install pyyaml if a policy file is provided and is YAML
-        POLICY="${{ inputs.policy-file }}"
-        if [ -n "$POLICY" ] && [[ "$POLICY" =~ \.(yml|yaml)$ ]]; then
-          pip install --quiet pyyaml 2>/dev/null || pip3 install --quiet pyyaml 2>/dev/null || true
+        VERSION="${{ inputs.version }}"
+        if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+          echo "::error::Invalid version format: $VERSION (expected semver like 3.0.0)"
+          exit 1
+        fi
+        case "$RUNNER_OS-$RUNNER_ARCH" in
+          Linux-X64)    TARGET="x86_64-unknown-linux-gnu" ;;
+          Linux-ARM64)  TARGET="aarch64-unknown-linux-gnu" ;;
+          macOS-X64)    TARGET="x86_64-apple-darwin" ;;
+          macOS-ARM64)  TARGET="aarch64-apple-darwin" ;;
+          *)
+            echo "::error::Unsupported platform: $RUNNER_OS-$RUNNER_ARCH (Windows is not supported)"
+            TARGET=""
+            ;;
+        esac
+
+        DOWNLOADED=false
+        if [ -n "$TARGET" ]; then
+          URL="https://github.com/dcondrey/unicode-safety-check/releases/download/v${VERSION}/unicode-safety-check-${TARGET}.tar.gz"
+          echo "Downloading $URL"
+          if curl -fsSL "$URL" -o "$RUNNER_TEMP/unicode-safety-check.tar.gz"; then
+            tar -xzf "$RUNNER_TEMP/unicode-safety-check.tar.gz" -C "$RUNNER_TEMP"
+            chmod +x "$RUNNER_TEMP/unicode-safety-check"
+            DOWNLOADED=true
+          else
+            echo "::warning::Binary download failed, trying fallback."
+          fi
+        fi
+
+        if [ "$DOWNLOADED" != "true" ]; then
+          if [ -x "${{ github.action_path }}/rust/target/release/unicode-safety-check" ]; then
+            cp "${{ github.action_path }}/rust/target/release/unicode-safety-check" "$RUNNER_TEMP/unicode-safety-check"
+            echo "Using pre-built binary from action directory."
+          else
+            echo "::error::No binary available. Download failed and no local build found."
+            exit 1
+          fi
         fi
 
     - name: Run Unicode safety scan
@@ -97,16 +136,18 @@ runs:
         INPUT_DISABLE_ANNOTATIONS: ${{ inputs.disable-annotations }}
         INPUT_SARIF_FILE: ${{ inputs.sarif-file }}
         INPUT_BASE_SHA: ${{ steps.params.outputs.base_sha }}
-        PYTHONDONTWRITEBYTECODE: '1'
       run: |
         ARGS=()
-        if [ "${{ inputs.scan-mode }}" = "all" ]; then
+        SCAN_MODE="${{ inputs.scan-mode }}"
+        FILE_LIST="${{ steps.params.outputs.file_list }}"
+        BASE_SHA="${{ steps.params.outputs.base_sha }}"
+        if [ "$SCAN_MODE" = "all" ]; then
           ARGS+=(--all)
-        elif [ -f "${{ steps.params.outputs.file_list }}" ]; then
-          ARGS+=(--file-list "${{ steps.params.outputs.file_list }}")
+        elif [ -f "$FILE_LIST" ]; then
+          ARGS+=(--file-list "$FILE_LIST")
         fi
-        if [ -n "${{ steps.params.outputs.base_sha }}" ]; then
-          ARGS+=(--base-sha "${{ steps.params.outputs.base_sha }}")
+        if [ -n "$BASE_SHA" ]; then
+          ARGS+=(--base-sha "$BASE_SHA")
         fi
         ARGS+=(--no-color)
-        python3 "${{ github.action_path }}/src/main.py" "${ARGS[@]}"
+        "$RUNNER_TEMP/unicode-safety-check" "${ARGS[@]}"

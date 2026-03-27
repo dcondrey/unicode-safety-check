@@ -1,0 +1,52 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "rust/**"
+      - ".github/workflows/test-rust.yml"
+  pull_request:
+    paths:
+      - "rust/**"
+      - ".github/workflows/test-rust.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --manifest-path rust/Cargo.toml -- --check
+      - run: cargo clippy --manifest-path rust/Cargo.toml -- -D warnings
+      - run: cargo test --manifest-path rust/Cargo.toml
+
+  acceptance:
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release --manifest-path rust/Cargo.toml
+
+      - name: Test clean file (should pass, exit 0)
+        run: |
+          echo 'def hello(): return 42' > /tmp/clean.py
+          ./rust/target/release/unicode-safety-check /tmp/clean.py
+
+      - name: Test bidi detection (should fail, exit 1)
+        run: |
+          printf 'x = "hello\xe2\x80\xaeworld"\n' > /tmp/bidi.py
+          OUTPUT=$(./rust/target/release/unicode-safety-check /tmp/bidi.py --no-color 2>&1 || true)
+          echo "$OUTPUT" | grep -q "USC001"
+
+      - name: Test SARIF output
+        run: |
+          printf 'x = "hello\xe2\x80\xaeworld"\n' > /tmp/bidi.py
+          ./rust/target/release/unicode-safety-check --sarif-file /tmp/sarif.json /tmp/bidi.py || true
+          test -f /tmp/sarif.json
+          jq -e '.version == "2.1.0"' /tmp/sarif.json
