@@ -19,6 +19,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
       - run: cargo fmt --manifest-path rust/Cargo.toml -- --check
       - run: cargo clippy --manifest-path rust/Cargo.toml -- -D warnings
       - run: cargo test --manifest-path rust/Cargo.toml
@@ -31,6 +34,9 @@ jobs:
         with:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
       - run: cargo build --release --manifest-path rust/Cargo.toml
 
       - name: Test clean file (should pass, exit 0)
