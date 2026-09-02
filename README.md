@@ -1,11 +1,14 @@
-# Unicode Safety Check
+<!-- repo-header:start -->
+<img src="https://github.com/dcondrey.png?size=160" alt="Unicode Safety Check logo" width="120" align="left">
 
-[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-Unicode%20Safety%20Check-blue?logo=github)](https://github.com/marketplace/actions/unicode-safety-check)
-[![CI](https://github.com/dcondrey/unicode-safety-check/actions/workflows/test.yml/badge.svg)](https://github.com/dcondrey/unicode-safety-check/actions/workflows/test.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![GitHub release](https://img.shields.io/github/v/release/dcondrey/unicode-safety-check)](https://github.com/dcondrey/unicode-safety-check/releases)
+<h1>Unicode Safety Check</h1>
 
-Detect adversarial Unicode in pull requests before it reaches your codebase. Language-aware, diff-aware, policy-driven. 19 rules, single-pass scanner, SARIF output.
+<p><strong>GitHub Action to detect adversarial Unicode in PRs: invisible characters, bidi attacks, homoglyphs, PUA code points, and encoding issues. Zero-config, language-agnostic.</strong></p>
+
+<br clear="left">
+
+[![CI](https://img.shields.io/github/actions/workflow/status/dcondrey/unicode-safety-check/test-rust.yml?style=flat-square&labelColor=20232a&branch=main&label=CI)](https://github.com/dcondrey/unicode-safety-check/actions/workflows/test-rust.yml) [![Best Practices Evidence](https://img.shields.io/badge/best%20practices-evidence%20reviewed-6a4c93?style=flat-square&labelColor=20232a)](.bestpractices.json) [![License](https://img.shields.io/github/license/dcondrey/unicode-safety-check?style=flat-square&labelColor=20232a&color=007ec6&label=license)](https://github.com/dcondrey/unicode-safety-check/blob/main/LICENSE) [![GitHub Sponsors](https://img.shields.io/badge/GitHub%20Sponsors-Sponsor-EA4AAA?style=flat-square&labelColor=20232a)](https://github.com/sponsors/dcondrey)
+<!-- repo-header:end -->
 
 Catches bidi attacks ([Trojan Source](https://trojansource.codes/)), invisible character injection, homoglyph spoofing, confusable identifier collisions ([Unicode TR39](https://www.unicode.org/reports/tr39/)), variation selector abuse ([Glassworm](https://arstechnica.com/security/2026/03/supply-chain-attack-using-invisible-code-hits-github-and-other-repositories/)), and more.
 
