@@ -1,14 +1,17 @@
 <!-- repo-header:start -->
-<img src="https://github.com/dcondrey.png?size=160" alt="Unicode Safety Check logo" width="120" align="left">
+<h3 align="center">Unicode Safety Check</h3>
 
-<h1>Unicode Safety Check</h1>
+<p align="center"><strong>GitHub Action to detect adversarial Unicode in PRs: invisible characters, bidi attacks, homoglyphs, PUA code points, and encoding issues. Zero-config, language-agnostic.</strong></p>
 
-<p><strong>GitHub Action to detect adversarial Unicode in PRs: invisible characters, bidi attacks, homoglyphs, PUA code points, and encoding issues. Zero-config, language-agnostic.</strong></p>
-
-<br clear="left">
-
-[![CI](https://img.shields.io/github/actions/workflow/status/dcondrey/unicode-safety-check/test-rust.yml?style=flat-square&labelColor=20232a&branch=main&label=CI)](https://github.com/dcondrey/unicode-safety-check/actions/workflows/test-rust.yml) [![Best Practices Evidence](https://img.shields.io/badge/best%20practices-evidence%20reviewed-6a4c93?style=flat-square&labelColor=20232a)](.bestpractices.json) [![License](https://img.shields.io/github/license/dcondrey/unicode-safety-check?style=flat-square&labelColor=20232a&color=007ec6&label=license)](https://github.com/dcondrey/unicode-safety-check/blob/main/LICENSE) [![GitHub Sponsors](https://img.shields.io/badge/GitHub%20Sponsors-Sponsor-EA4AAA?style=flat-square&labelColor=20232a)](https://github.com/sponsors/dcondrey)
+<p align="center">
+  <a href="https://github.com/dcondrey/unicode-safety-check/actions/workflows/test-rust.yml"><img src="https://img.shields.io/github/actions/workflow/status/dcondrey/unicode-safety-check/test-rust.yml?style=flat-square&labelColor=20232a&branch=main&label=CI" alt="CI"></a>
+  <a href=".bestpractices.json"><img src="https://img.shields.io/badge/best%20practices-evidence%20reviewed-6a4c93?style=flat-square&labelColor=20232a" alt="Best Practices Evidence"></a>
+  <a href="https://github.com/dcondrey/unicode-safety-check/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dcondrey/unicode-safety-check?style=flat-square&labelColor=20232a&color=007ec6&label=license" alt="License"></a>
+  <a href="https://github.com/sponsors/dcondrey"><img src="https://img.shields.io/badge/GitHub%20Sponsors-Sponsor-EA4AAA?style=flat-square&labelColor=20232a" alt="GitHub Sponsors"></a>
+</p>
 <!-- repo-header:end -->
+
+---
 
 Catches bidi attacks ([Trojan Source](https://trojansource.codes/)), invisible character injection, homoglyph spoofing, confusable identifier collisions ([Unicode TR39](https://www.unicode.org/reports/tr39/)), variation selector abuse ([Glassworm](https://arstechnica.com/security/2026/03/supply-chain-attack-using-invisible-code-hits-github-and-other-repositories/)), and more.
 
